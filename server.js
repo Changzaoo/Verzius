@@ -63,8 +63,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-const UPLOAD_DIR = path.join(__dirname, "uploads");
-if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+// Em serverless o disco do projeto e read-only; usa /tmp e ignora falha.
+const UPLOAD_DIR = process.env.VERCEL ? "/tmp/uploads" : path.join(__dirname, "uploads");
+try { if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true }); } catch {}
 const upload = multer({ dest: UPLOAD_DIR, limits: { fileSize: 50 * 1024 * 1024 } });
 
 app.use(express.json({ limit: "5mb" }));
@@ -692,7 +693,12 @@ app.post("/api/calendar/plan", (req, res) => {
 // SPA fallback
 app.get("*", (req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
 
-app.listen(PORT, () => {
-  console.log(`\n  CORTES AI rodando em http://localhost:${PORT}`);
-  console.log(`  Modo: ${llmConfigured() ? "LIVE (APIs conectadas)" : "DEMO (sem chaves)"}\n`);
-});
+// Em ambiente serverless (Vercel) nao damos listen — exportamos o app.
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`\n  VERZIUS rodando em http://localhost:${PORT}`);
+    console.log(`  Modo: ${llmConfigured() ? "LIVE (APIs conectadas)" : "DEMO (sem chaves)"}\n`);
+  });
+}
+
+export default app;

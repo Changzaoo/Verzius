@@ -1,0 +1,6 @@
+uploads
+data/db.json
+*.log
+.env
+setup-tunel.ps1
+setup-tunel.bat
