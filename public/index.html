@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Verzius — Agência de Vídeos Virais com IA</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <!-- LOGIN -->
+  <div id="login" class="login-screen hidden">
+    <div class="login-card">
+      <div class="logo-big">▶ Verz<span>ius</span></div>
+      <p class="muted">Acesso restrito</p>
+      <input type="password" id="loginPass" placeholder="Senha do painel" />
+      <button class="btn primary" onclick="doLogin()">Entrar</button>
+      <p id="loginErr" class="err hidden">Senha incorreta.</p>
+    </div>
+  </div>
+
+  <!-- APP -->
+  <div id="app" class="app hidden">
+    <aside class="sidebar">
+      <div class="logo">▶ Verz<span>ius</span></div>
+      <nav>
+        <div class="nav-label">Visão geral</div>
+        <a data-view="dashboard" class="active">📊 Dashboard</a>
+        <a data-view="clients">👥 Clientes</a>
+        <div class="nav-label">Produção</div>
+        <a data-view="studio">✍️ Estúdio de Roteiro</a>
+        <a data-view="videos">🎬 Vídeos</a>
+        <a data-view="posts">🚀 Publicações</a>
+        <a data-view="calendar">📅 Calendário</a>
+        <div class="nav-label">Sistema</div>
+        <a data-view="settings">⚙️ Configurações</a>
+      </nav>
+      <button class="help-fab" onclick="startTutorial()">🎓 Tutorial guiado</button>
+      <div class="mode-badge" id="modeBadge">...</div>
+      <div id="userBox" class="user-box"></div>
+    </aside>
+
+    <main class="content">
+      <div id="view"></div>
+    </main>
+  </div>
+
+  <!-- MODAL -->
+  <div id="modal" class="modal hidden">
+    <div class="modal-box">
+      <button class="modal-close" onclick="closeModal()">✕</button>
+      <div id="modalBody"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
