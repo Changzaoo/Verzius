@@ -3,3 +3,7 @@ node_modules/
 data/db.json
 uploads/
 *.log
+firebase-service-account.json
+*adminsdk*.json
+
+.vercel

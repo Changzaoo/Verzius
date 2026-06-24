@@ -43,6 +43,14 @@ import {
   generateAvatarVideo as sadtalkerGenerate,
   getVideoStatus as sadtalkerStatus,
 } from "./lib/integrations/lipsync.js";
+import {
+  firebaseConfigured,
+  verifyIdToken,
+  listUsers as fbListUsers,
+  setApproved as fbSetApproved,
+  FIREBASE_WEB_CONFIG,
+  ADMIN_EMAIL,
+} from "./lib/firebase.js";
 
 // URL publica base (tunel) — necessaria p/ Ayrshare e SadTalker baixarem arquivos.
 const publicBase = () => process.env.PUBLIC_BASE_URL && process.env.PUBLIC_BASE_URL.replace(/\/+$/, "");
@@ -84,7 +92,23 @@ const fail = (res, err, code = 500) =>
 const authActive = () => db.list("users").length > 0;
 const OPEN_PATHS = ["/status", "/signup", "/login", "/auth", "/me"];
 
-app.use("/api", (req, res, next) => {
+app.use("/api", async (req, res, next) => {
+  // --- FIREBASE (quando configurado): verifica o ID token + aprovacao ---
+  if (firebaseConfigured()) {
+    if (req.path === "/status" || req.path === "/me" || req.path === "/fb/me") return next(); // verificam por conta propria
+    const token = (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
+    if (!token) return fail(res, "Nao autenticado", 401);
+    try {
+      const u = await verifyIdToken(token);
+      req.userId = u.uid; req.email = u.email; req.isAdmin = u.isAdmin;
+      if (!u.approved) return fail(res, "Conta pendente de aprovacao do administrador", 403);
+      return next();
+    } catch (e) {
+      return fail(res, "Sessao invalida", 401);
+    }
+  }
+
+  // --- LOCAL (scrypt) — fallback quando o Firebase nao esta ligado ---
   if (!authActive()) { req.userId = null; return next(); }      // DEMO aberto
   if (OPEN_PATHS.includes(req.path)) return next();             // rotas publicas
   const token = (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
@@ -118,9 +142,38 @@ app.get("/api/status", (req, res) => {
     },
     niches: NICHE_PRESETS,
     hookFormulas: HOOK_FORMULAS,
-    multiuser: authActive(),
+    multiuser: authActive() || firebaseConfigured(),
+    firebase: firebaseConfigured() ? { enabled: true, config: FIREBASE_WEB_CONFIG, adminEmail: ADMIN_EMAIL } : { enabled: false },
     passwordRequired: Boolean(process.env.APP_PASSWORD),
   });
+});
+
+// ---------------------------------------------------------------------
+// FIREBASE — sessao (/me) e painel do admin (aprovacao de contas)
+// ---------------------------------------------------------------------
+app.get("/api/fb/me", async (req, res) => {
+  const token = (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
+  if (!token) return ok(res, { user: null });
+  try {
+    const u = await verifyIdToken(token);
+    ok(res, { user: { uid: u.uid, email: u.email, approved: u.approved, isAdmin: u.isAdmin } });
+  } catch (e) {
+    ok(res, { user: null, error: String(e.message) });
+  }
+});
+
+app.get("/api/admin/users", async (req, res) => {
+  if (!req.isAdmin) return fail(res, "Apenas o administrador", 403);
+  try { ok(res, { users: await fbListUsers() }); }
+  catch (e) { fail(res, e); }
+});
+
+app.post("/api/admin/approve", async (req, res) => {
+  if (!req.isAdmin) return fail(res, "Apenas o administrador", 403);
+  const { uid, approved = true } = req.body || {};
+  if (!uid) return fail(res, "uid obrigatorio", 400);
+  try { ok(res, await fbSetApproved(uid, approved)); }
+  catch (e) { fail(res, e); }
 });
 
 // ---------------------------------------------------------------------

@@ -1,8 +1,9 @@
 // ============================ Verzius — SPA ============================
 const TOKEN_KEY = "verzius_token";
+let AUTH_TOKEN = "";  // token do Firebase (tem prioridade quando logado via Firebase)
 const getToken = () => localStorage.getItem(TOKEN_KEY) || "";
 const setToken = (t) => t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY);
-const authHeaders = (extra = {}) => { const t = getToken(); return t ? { ...extra, Authorization: `Bearer ${t}` } : extra; };
+const authHeaders = (extra = {}) => { const t = AUTH_TOKEN || getToken(); return t ? { ...extra, Authorization: `Bearer ${t}` } : extra; };
 const api = {
   async get(p) { return (await fetch(p, { headers: authHeaders() })).json(); },
   async post(p, body) { return (await fetch(p, { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify(body) })).json(); },
@@ -27,32 +28,93 @@ function nicheLabel(n) { return STATE.status?.niches?.[n]?.label || n; }
 
 // ---------- auth (multiusuario) ----------
 let AUTH_MODE = "login"; // "login" | "signup"
+let FB = null;           // instancia firebase.auth() quando ativo
 async function boot() {
   STATE.status = await api.get("/api/status");
+  if (STATE.status.firebase?.enabled) return bootFirebase();
   if (STATE.status.multiuser) {
-    // exige sessao: valida o token guardado
     const me = await api.get("/api/me");
     if (me.user) { STATE.user = me.user; $("login").classList.add("hidden"); showApp(); }
     else { setToken(""); renderAuthScreen(); }
   } else {
-    // modo aberto (DEMO) — sem login
-    showApp();
+    showApp(); // modo aberto (DEMO)
   }
 }
+
+// ===== Firebase Auth =====
+function bootFirebase() {
+  if (!window.firebase) { renderAuthScreen(); return toast("SDK do Firebase nao carregou", "err"); }
+  if (!firebase.apps.length) firebase.initializeApp(STATE.status.firebase.config);
+  FB = firebase.auth();
+  FB.onIdTokenChanged(async (user) => {
+    if (!user) { AUTH_TOKEN = ""; STATE.fbUser = null; renderAuthScreen(); return; }
+    AUTH_TOKEN = await user.getIdToken();
+    const me = await api.get("/api/fb/me");
+    STATE.fbUser = me.user;
+    STATE.user = me.user ? { name: (me.user.email || "").split("@")[0], email: me.user.email } : null;
+    if (me.user && me.user.approved) { $("login").classList.add("hidden"); showApp(); }
+    else renderPendingScreen(me.user);
+  });
+}
+async function fbAuth() {
+  const email = $("au_email").value.trim();
+  const password = $("au_pass").value;
+  const errEl = $("loginErr"); errEl.classList.add("hidden");
+  const btn = $("authBtn"); btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
+  try {
+    if (AUTH_MODE === "signup") await FB.createUserWithEmailAndPassword(email, password);
+    else await FB.signInWithEmailAndPassword(email, password);
+    // onIdTokenChanged cuida do resto (approved -> app, senao -> pendente)
+  } catch (e) {
+    errEl.textContent = fbErr(e.code) || e.message; errEl.classList.remove("hidden");
+    btn.disabled = false; btn.textContent = AUTH_MODE === "signup" ? "Criar conta" : "Entrar";
+  }
+}
+function fbErr(code) {
+  return ({
+    "auth/invalid-credential": "E-mail ou senha incorretos.",
+    "auth/wrong-password": "Senha incorreta.",
+    "auth/user-not-found": "Conta nao encontrada.",
+    "auth/email-already-in-use": "Ja existe conta com esse e-mail. Faca login.",
+    "auth/weak-password": "Senha fraca (minimo 6 caracteres).",
+    "auth/invalid-email": "E-mail invalido.",
+    "auth/too-many-requests": "Muitas tentativas. Aguarde um pouco.",
+  })[code];
+}
+function renderPendingScreen(user) {
+  $("login").classList.remove("hidden");
+  $("login").innerHTML = `
+    <div class="login-card">
+      <div class="logo-big">▶ Verz<span>ius</span></div>
+      <div style="font-size:40px;margin:8px 0">⏳</div>
+      <h2 style="margin-bottom:8px">Conta aguardando aprovação</h2>
+      <p class="muted" style="font-size:14px;line-height:1.6">Sua conta (<b>${user?.email || ""}</b>) foi criada e está <b>pendente de aprovação</b> do administrador. Você receberá acesso assim que for liberado.</p>
+      <button class="btn primary" style="margin-top:18px" onclick="recheckApproval()">Já fui aprovado — atualizar</button>
+      <button class="btn ghost" style="margin-top:8px" onclick="doLogout()">Sair</button>
+    </div>`;
+}
+async function recheckApproval() {
+  if (FB?.currentUser) { await FB.currentUser.getIdToken(true); AUTH_TOKEN = await FB.currentUser.getIdToken(); }
+  const me = await api.get("/api/fb/me");
+  if (me.user?.approved) { STATE.fbUser = me.user; $("login").classList.add("hidden"); showApp(); }
+  else toast("Ainda pendente — aguarde a aprovação.", "err");
+}
+
 function renderAuthScreen() {
+  const fb = STATE.status?.firebase?.enabled;
   const signup = AUTH_MODE === "signup";
   $("login").classList.remove("hidden");
   $("login").innerHTML = `
     <div class="login-card">
       <div class="logo-big">▶ Verz<span>ius</span></div>
-      <p class="muted">${signup ? "Crie a conta da sua agência" : "Entre na sua conta"}</p>
-      ${signup ? `<input id="au_name" placeholder="Seu nome / agência" />` : ""}
+      <p class="muted">${signup ? "Crie sua conta (precisa de aprovação)" : "Entre na sua conta"}</p>
+      ${(!fb && signup) ? `<input id="au_name" placeholder="Seu nome / agência" />` : ""}
       <input id="au_email" type="email" placeholder="E-mail" />
-      <input id="au_pass" type="password" placeholder="Senha (mín. 6)" onkeydown="if(event.key==='Enter')doAuth()" />
-      <button class="btn primary" onclick="doAuth()">${signup ? "Criar conta" : "Entrar"}</button>
+      <input id="au_pass" type="password" placeholder="Senha (mín. 6)" onkeydown="if(event.key==='Enter')${fb ? "fbAuth()" : "doAuth()"}" />
+      <button class="btn primary" id="authBtn" onclick="${fb ? "fbAuth()" : "doAuth()"}">${signup ? "Criar conta" : "Entrar"}</button>
       <p id="loginErr" class="err hidden"></p>
       <p class="muted" style="font-size:13px;margin-top:12px;cursor:pointer" onclick="toggleAuthMode()">
-        ${signup ? "Já tem conta? <b>Entrar</b>" : "Ainda não tem conta? <b>Criar agência</b>"}
+        ${signup ? "Já tem conta? <b>Entrar</b>" : "Ainda não tem conta? <b>Criar conta</b>"}
       </p>
     </div>`;
 }
@@ -71,6 +133,7 @@ async function doAuth() {
   }
 }
 async function doLogout() {
+  if (FB) { await FB.signOut(); AUTH_TOKEN = ""; location.reload(); return; }
   await api.post("/api/logout", {});
   setToken(""); STATE.user = null; location.reload();
 }
@@ -82,9 +145,12 @@ function showApp() {
   const ub = $("userBox");
   if (ub) {
     ub.innerHTML = STATE.user
-      ? `<span class="muted" style="font-size:12px">👤 ${STATE.user.name}</span><button class="btn sm ghost" onclick="doLogout()">Sair</button>`
+      ? `<span class="muted" style="font-size:12px">👤 ${STATE.user.name}${STATE.fbUser?.isAdmin ? " (admin)" : ""}</span><button class="btn sm ghost" onclick="doLogout()">Sair</button>`
       : `<button class="btn sm ghost" onclick="renderAuthScreen()">Criar agência / Entrar</button>`;
   }
+  // item de Aprovações só para o admin
+  const navAdmin = $("navAdmin");
+  if (navAdmin) navAdmin.classList.toggle("hidden", !STATE.fbUser?.isAdmin);
   document.querySelectorAll(".sidebar nav a").forEach(a => {
     a.onclick = () => navigate(a.dataset.view);
   });
@@ -95,7 +161,7 @@ function showApp() {
 function navigate(view) {
   STATE.currentView = view;
   document.querySelectorAll(".sidebar nav a").forEach(a => a.classList.toggle("active", a.dataset.view === view));
-  ({ dashboard: viewDashboard, clients: viewClients, studio: viewStudio, videos: viewVideos, posts: viewPosts, calendar: viewCalendar, settings: viewSettings }[view])();
+  ({ dashboard: viewDashboard, clients: viewClients, studio: viewStudio, videos: viewVideos, posts: viewPosts, calendar: viewCalendar, admin: viewAdmin, settings: viewSettings }[view])();
 }
 
 // ============================ DASHBOARD ============================
@@ -547,6 +613,40 @@ function viewSettings() {
     </div>`;
 }
 
+// ============================ ADMIN — APROVAÇÕES ============================
+async function viewAdmin() {
+  if (!STATE.fbUser?.isAdmin) { $("view").innerHTML = '<h1>🛡️ Aprovações</h1><p class="empty">Acesso restrito ao administrador.</p>'; return; }
+  const r = await api.get("/api/admin/users");
+  const users = r.users || [];
+  const pend = users.filter(u => !u.approved).length;
+  $("view").innerHTML = `
+    <h1>🛡️ Aprovações de acesso</h1>
+    <p class="page-sub">Aprove ou revogue o acesso de cada conta registrada no Firebase. ${pend ? `<b style="color:var(--amber)">${pend} pendente(s)</b>` : "Tudo em dia."}</p>
+    <div id="adminList">${users.length ? "" : '<p class="empty">Nenhum usuário registrado ainda.</p>'}</div>`;
+  const list = $("adminList");
+  users.forEach(u => {
+    const node = el(`
+      <div class="list-item">
+        <div class="avatar-circle">${u.isAdmin ? "🛡️" : (u.approved ? "✅" : "⏳")}</div>
+        <div style="flex:1">
+          <div style="font-weight:600">${u.email} ${u.isAdmin ? '<span class="tag brand">admin</span>' : ""}</div>
+          <div class="row" style="margin-top:4px">
+            <span class="tag ${u.approved ? "green" : "amber"}">${u.approved ? "aprovado" : "pendente"}</span>
+            <span class="muted" style="font-size:12px">criado ${u.createdAt ? new Date(u.createdAt).toLocaleDateString("pt-BR") : "—"}${u.lastSignIn ? " · último acesso " + new Date(u.lastSignIn).toLocaleDateString("pt-BR") : ""}</span>
+          </div>
+        </div>
+        ${u.isAdmin ? "" : (u.approved
+          ? `<button class="btn sm danger" data-revoke="${u.uid}">Revogar</button>`
+          : `<button class="btn sm primary" data-approve="${u.uid}">✓ Aprovar</button>`)}
+      </div>`);
+    const ap = node.querySelector("[data-approve]");
+    if (ap) ap.onclick = async () => { ap.disabled = true; await api.post("/api/admin/approve", { uid: u.uid, approved: true }); toast("Conta aprovada"); viewAdmin(); };
+    const rv = node.querySelector("[data-revoke]");
+    if (rv) rv.onclick = async () => { if (!confirm("Revogar o acesso desta conta?")) return; await api.post("/api/admin/approve", { uid: u.uid, approved: false }); toast("Acesso revogado"); viewAdmin(); };
+    list.appendChild(node);
+  });
+}
+
 // ============================ TUTORIAL GUIADO ============================
 // Passo a passo com FOCO no item explicado: navega até a aba, ilumina o
 // menu correspondente e mostra um cartão explicando aquela etapa.
@@ -618,3 +718,4 @@ window.generateScripts = generateScripts; window.saveScript = saveScript; window
 window.produceVideo = produceVideo; window.genPlan = genPlan; window.generateAvatar = generateAvatar;
 window.openPublish = openPublish; window.doPublish = doPublish; window.refreshAllPosts = refreshAllPosts;
 window.startTutorial = startTutorial; window.tutNext = tutNext; window.tutPrev = tutPrev; window.tutEnd = tutEnd;
+window.fbAuth = fbAuth; window.recheckApproval = recheckApproval;

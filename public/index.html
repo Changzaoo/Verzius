@@ -34,6 +34,7 @@
         <a data-view="posts">🚀 Publicações</a>
         <a data-view="calendar">📅 Calendário</a>
         <div class="nav-label">Sistema</div>
+        <a data-view="admin" id="navAdmin" class="hidden">🛡️ Aprovações</a>
         <a data-view="settings">⚙️ Configurações</a>
       </nav>
       <button class="help-fab" onclick="startTutorial()">🎓 Tutorial guiado</button>
@@ -56,6 +57,9 @@
 
   <div id="toast" class="toast hidden"></div>
 
+  <!-- Firebase Auth (compat: expoe o global `firebase`) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>
