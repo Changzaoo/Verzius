@@ -161,7 +161,8 @@ function showApp() {
 function navigate(view) {
   STATE.currentView = view;
   document.querySelectorAll(".sidebar nav a").forEach(a => a.classList.toggle("active", a.dataset.view === view));
-  ({ dashboard: viewDashboard, clients: viewClients, studio: viewStudio, videos: viewVideos, posts: viewPosts, calendar: viewCalendar, admin: viewAdmin, settings: viewSettings }[view])();
+  const fn = { dashboard: viewDashboard, clients: viewClients, studio: viewStudio, videos: viewVideos, posts: viewPosts, calendar: viewCalendar, admin: viewAdmin, settings: viewSettings }[view];
+  if (fn) fn();
 }
 
 // ============================ DASHBOARD ============================
@@ -590,27 +591,119 @@ async function genPlan() {
 }
 
 // ============================ CONFIGURAÇÕES ============================
-function viewSettings() {
+async function viewSettings() {
   const s = STATE.status.integrations;
-  const dot = (ok) => ok ? '<span class="tag green">conectado</span>' : '<span class="tag amber">não configurado</span>';
+  const badge = (on, label) => on
+    ? `<span class="tag green">✓ ${label || "conectado"}</span>`
+    : `<span class="tag amber">não configurado</span>`;
+
+  const intCard = (icon, name, desc, ok, extra = "") => `
+    <div class="integration-card">
+      <div class="integration-info">
+        <div class="integration-dot">${icon}</div>
+        <div>
+          <div style="font-weight:600;font-size:14px">${name}</div>
+          <div class="muted" style="font-size:12px;margin-top:2px">${desc}</div>
+        </div>
+      </div>
+      <div class="row" style="gap:8px">${extra}${badge(ok)}</div>
+    </div>`;
+
   $("view").innerHTML = `
     <h1>⚙️ Configurações</h1>
-    <p class="page-sub">Conecte as APIs para sair do modo demo e produzir de verdade.</p>
-    <div class="card" style="margin-bottom:14px"><div class="row between"><div><b>Roteiro (LLM)</b><br><span class="muted" style="font-size:13px">OpenAI ou Anthropic — gera os roteiros virais</span></div>${dot(s.llm.configured)}</div></div>
-    <div class="card" style="margin-bottom:14px"><div class="row between"><div><b>Voz (ElevenLabs)</b><br><span class="muted" style="font-size:13px">Clona a voz a partir do áudio enviado</span></div>${dot(s.voice.configured)}</div></div>
-    <div class="card" style="margin-bottom:14px"><div class="row between"><div><b>Avatar (HeyGen)</b><br><span class="muted" style="font-size:13px">Clona o rosto e gera o vídeo</span></div>${dot(s.avatar.configured)}</div></div>
-    <div class="card" style="margin-bottom:14px"><div class="row between"><div><b>Edição (FFmpeg)</b><br><span class="muted" style="font-size:13px">Queima legendas e formata vertical 9:16 — embutido, sem instalar</span></div>${dot(s.editor?.configured)}</div></div>
-    <div class="card" style="margin-bottom:14px"><div class="row between"><div><b>B-roll (Pexels)</b><br><span class="muted" style="font-size:13px">Clipes de fundo reais — defina PEXELS_API_KEY</span></div>${dot(s.broll?.configured)}</div></div>
-    <div class="card" style="margin-bottom:14px"><div class="row between"><div><b>Publicação (Redes)</b><br><span class="muted" style="font-size:13px">Instagram / TikTok / YouTube — tokens por plataforma</span></div>${dot(s.publish?.configured)}</div></div>
-    <div class="card">
+    <p class="page-sub">Integrações e redes sociais da sua agência.</p>
+
+    <h2 style="margin-bottom:12px">Integrações de produção</h2>
+    ${intCard("🧠", "Roteiro (LLM / NXS)", "Gera roteiros virais com IA — NXS (custo zero) ou OpenAI/Anthropic", s.llm.configured)}
+    ${intCard("🎙️", "Voz (ElevenLabs)", "Clona a voz a partir do áudio enviado pelo cliente", s.voice.configured)}
+    ${intCard("🧑", "Avatar (HeyGen / SadTalker)", "Lip-sync: rosto falante gerado automaticamente", s.avatar.configured)}
+    ${intCard("✂️", "Edição automática (FFmpeg)", "Legendas karaoke queimadas, B-roll, 9:16 — sem instalar nada", s.editor?.configured)}
+    ${intCard("🎞️", "B-roll (Pexels)", "Clipes de fundo verticais reais para cada cena do roteiro", s.broll?.configured)}
+
+    <h2 style="margin:24px 0 12px">Redes sociais</h2>
+    <div id="socialSection">
+      <div class="card" style="text-align:center;padding:32px"><span class="spinner"></span><div class="muted" style="margin-top:10px;font-size:13px">Verificando conexões…</div></div>
+    </div>
+
+    <div class="card" style="margin-top:20px">
       <h2>Como ativar o modo LIVE</h2>
-      <ol style="line-height:2;color:#cfd3e0;padding-left:18px;font-size:14px">
-        <li>Copie <code>.env.example</code> para <code>.env</code></li>
-        <li>Cole suas chaves (OpenAI/Anthropic, ElevenLabs, HeyGen)</li>
-        <li>Reinicie o servidor (<code>npm start</code>)</li>
+      <ol style="line-height:2.1;color:var(--text-2);padding-left:18px;font-size:13.5px">
+        <li>Edite o arquivo <code>.env</code> na pasta do projeto</li>
+        <li>Cole suas chaves (ElevenLabs, HeyGen, Pexels, NXS…)</li>
+        <li>Reinicie o servidor: <code>npm start</code></li>
       </ol>
-      <p class="muted" style="font-size:13px">As chaves ficam só no seu computador (arquivo .env). Nunca são enviadas ao navegador.</p>
+      <p class="muted" style="font-size:12px;margin-top:10px">As chaves ficam só no seu servidor (arquivo .env) — nunca são enviadas ao navegador.</p>
     </div>`;
+
+  // Carrega status das redes sociais de forma assíncrona
+  loadSocialStatus();
+}
+
+const SOCIAL_PLATFORMS = [
+  { key: "instagram", icon: "ig",  label: "Instagram", emoji: "📸" },
+  { key: "tiktok",   icon: "tt",  label: "TikTok",    emoji: "🎵" },
+  { key: "youtube",  icon: "yt",  label: "YouTube",   emoji: "▶️" },
+  { key: "linkedin", icon: "li",  label: "LinkedIn",  emoji: "💼" },
+];
+
+async function loadSocialStatus() {
+  const sec = $("socialSection");
+  if (!sec) return;
+  const r = await api.get("/api/social/status");
+  const connected = new Set((r.platforms || []).map(p => p.toLowerCase()));
+  const ayrshare = r.configured;
+
+  const cards = SOCIAL_PLATFORMS.map(p => {
+    const isOn = connected.has(p.key);
+    return `
+      <div class="social-card" style="margin-bottom:8px">
+        <div class="social-icon ${p.icon}">${p.emoji}</div>
+        <div>
+          <div style="font-weight:600">${p.label}</div>
+          <div class="muted" style="font-size:12px;margin-top:2px">${isOn ? "Conta conectada" : "Não conectado"}</div>
+        </div>
+        <div class="social-connect-btn">
+          ${isOn
+            ? `<span class="tag green">✓ ativo</span>`
+            : ayrshare
+              ? `<button class="btn sm primary" onclick="connectSocial('${p.key}')">+ Conectar</button>`
+              : `<span class="tag amber">config. Ayrshare</span>`}
+        </div>
+      </div>`;
+  }).join("");
+
+  const ayrInfo = ayrshare
+    ? `<div class="row" style="gap:8px;margin-top:16px">
+        <button class="btn primary" onclick="openAyrshareConnect()">🔗 Gerenciar todas as contas</button>
+        <button class="btn ghost sm" onclick="loadSocialStatus()">↻ Atualizar</button>
+      </div>`
+    : `<p class="muted" style="font-size:13px;margin-top:16px">Configure <code>AYRSHARE_API_KEY</code> no <code>.env</code> para conectar as redes sociais.</p>`;
+
+  sec.innerHTML = `
+    <div class="card">
+      <div class="row between" style="margin-bottom:16px">
+        <div>
+          <b style="font-size:14px">Contas nas redes</b>
+          <div class="muted" style="font-size:12px;margin-top:2px">via <b>Ayrshare</b> — conecte uma vez, publique em todas</div>
+        </div>
+        ${ayrshare ? `<span class="tag green">Ayrshare ativo</span>` : `<span class="tag amber">Ayrshare não configurado</span>`}
+      </div>
+      ${cards}
+      ${ayrInfo}
+    </div>`;
+}
+
+async function connectSocial(platform, btnEl) {
+  await openAyrshareConnect(platform, btnEl);
+}
+
+async function openAyrshareConnect(platform, btnEl) {
+  if (btnEl) { btnEl.disabled = true; btnEl.innerHTML = '<span class="spinner"></span>'; }
+  const r = await api.post("/api/social/connect-url", {});
+  if (btnEl) { btnEl.disabled = false; btnEl.textContent = platform ? "+ Conectar" : "🔗 Gerenciar todas as contas"; }
+  if (!r.ok || !r.url) return toast(r.error || "Erro ao gerar link", "err");
+  window.open(r.url, "_blank", "width=720,height=660,scrollbars=yes");
+  toast("Autentique na janela e clique em ↻ Atualizar ao concluir.");
 }
 
 // ============================ ADMIN — APROVAÇÕES ============================
@@ -719,3 +812,5 @@ window.produceVideo = produceVideo; window.genPlan = genPlan; window.generateAva
 window.openPublish = openPublish; window.doPublish = doPublish; window.refreshAllPosts = refreshAllPosts;
 window.startTutorial = startTutorial; window.tutNext = tutNext; window.tutPrev = tutPrev; window.tutEnd = tutEnd;
 window.fbAuth = fbAuth; window.recheckApproval = recheckApproval;
+window.connectSocial = connectSocial; window.openAyrshareConnect = openAyrshareConnect;
+window.loadSocialStatus = loadSocialStatus;

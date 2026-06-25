@@ -177,6 +177,44 @@ app.post("/api/admin/approve", async (req, res) => {
 });
 
 // ---------------------------------------------------------------------
+// REDES SOCIAIS — status de contas conectadas + URL OAuth (Ayrshare)
+// ---------------------------------------------------------------------
+app.get("/api/social/status", async (req, res) => {
+  if (!ayrshareConfigured()) return ok(res, { configured: false, platforms: [] });
+  try {
+    const r = await fetch("https://api.ayrshare.com/api/user", {
+      headers: { Authorization: `Bearer ${process.env.AYRSHARE_API_KEY}` },
+    });
+    if (!r.ok) return ok(res, { configured: true, platforms: [], error: `Ayrshare ${r.status}` });
+    const data = await r.json();
+    return ok(res, { configured: true, platforms: data.activeSocialAccounts || [], plan: data.plan });
+  } catch (e) {
+    return ok(res, { configured: true, platforms: [], error: e.message });
+  }
+});
+
+// Gera a URL JWT do Ayrshare para o usuario conectar as redes dele.
+app.post("/api/social/connect-url", async (req, res) => {
+  if (!ayrshareConfigured()) return fail(res, "Ayrshare nao configurado", 400);
+  try {
+    const { profileKey } = req.body || {};
+    const r = await fetch("https://api.ayrshare.com/api/profiles/generateJWT", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.AYRSHARE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ domain: "id", ...(profileKey ? { profileKey } : {}) }),
+    });
+    const data = await r.json();
+    if (!r.ok) return fail(res, data.message || `Ayrshare ${r.status}`, 400);
+    return ok(res, { url: data.url });
+  } catch (e) {
+    return fail(res, e);
+  }
+});
+
+// ---------------------------------------------------------------------
 // AUTENTICACAO (multiusuario / agencia)
 // ---------------------------------------------------------------------
 app.post("/api/signup", (req, res) => {
