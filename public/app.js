@@ -597,7 +597,6 @@ async function viewSettings() {
     ? `<span class="tag green"><span class="material-icons-round" style="font-size:12px;vertical-align:middle">check</span> conectado</span>`
     : `<span class="tag amber">não configurado</span>`;
 
-  // icon: classe .int-icon color | material icon name
   const intCard = (color, icon, name, desc, on) => `
     <div class="integration-card">
       <div class="integration-info">
@@ -610,9 +609,46 @@ async function viewSettings() {
       ${badge(on)}
     </div>`;
 
+  // Carrega estado atual das chaves do banco
+  const kr = await api.get("/api/settings/integrations");
+  const keys = kr.keys || {};
+
+  const keyCard = (envKey, icon, color, label) => {
+    const info = keys[envKey] || {};
+    return `
+    <div class="integration-card" id="kcard_${envKey}">
+      <div class="integration-info">
+        <span class="material-icons-round int-icon ${color}">${icon}</span>
+        <div style="flex:1">
+          <div style="font-weight:600;font-size:14px">${label}</div>
+          <div class="muted" style="font-size:12px;margin-top:2px;font-family:monospace">
+            ${info.configured ? info.masked : "Não configurada"}
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center">
+        ${info.configured ? `<span class="tag green" style="font-size:11px">ativa</span>` : `<span class="tag amber" style="font-size:11px">vazia</span>`}
+        <button class="btn sm ghost" onclick="editApiKey('${envKey}')">
+          <span class="material-icons-round" style="font-size:14px">edit</span>
+        </button>
+      </div>
+    </div>`;
+  };
+
   $("view").innerHTML = `
     <h1>Configurações</h1>
     <p class="page-sub">Integrações de produção e redes sociais da sua agência.</p>
+
+    <h2 style="margin-bottom:10px">Chaves de API</h2>
+    <div class="card" style="margin-bottom:16px;padding:16px 20px">
+      <p class="muted" style="font-size:13px;margin-bottom:14px">As chaves são salvas de forma segura no banco de dados do servidor. Nenhum arquivo precisa ser editado manualmente.</p>
+      ${keyCard("AYRSHARE_API_KEY",    "share",         "indigo", "Ayrshare — Publicação social")}
+      ${keyCard("ELEVENLABS_API_KEY",  "mic",           "green",  "ElevenLabs — Clonagem de voz")}
+      ${keyCard("HEYGEN_API_KEY",      "face",          "purple", "HeyGen — Avatar (lip-sync)")}
+      ${keyCard("PEXELS_API_KEY",      "video_library", "teal",   "Pexels — B-roll automático")}
+      ${keyCard("NXS_API_KEY",         "psychology",    "blue",   "NXS / LLM — Geração de roteiro")}
+      ${keyCard("REPLICATE_API_TOKEN", "movie_filter",  "orange", "Replicate — SadTalker avatar")}
+    </div>
 
     <h2 style="margin-bottom:10px">Integrações</h2>
     ${intCard("blue",   "psychology",     "Roteiro (LLM / NXS)",          "Gera roteiros virais — NXS gratuito ou OpenAI/Anthropic",            s.llm.configured)}
@@ -631,6 +667,30 @@ async function viewSettings() {
     </div>`;
 
   loadSocialStatus();
+}
+
+async function editApiKey(envKey) {
+  const labels = {
+    AYRSHARE_API_KEY:    "Ayrshare (Publicação social)",
+    ELEVENLABS_API_KEY:  "ElevenLabs (Clonagem de voz)",
+    HEYGEN_API_KEY:      "HeyGen (Avatar)",
+    PEXELS_API_KEY:      "Pexels (B-roll)",
+    NXS_API_KEY:         "NXS / LLM (Roteiro)",
+    REPLICATE_API_TOKEN: "Replicate (SadTalker)",
+  };
+  const label = labels[envKey] || envKey;
+  const val = prompt(`Chave para ${label}\n\nDeixe vazio para remover:`, "");
+  if (val === null) return; // cancelou
+  const r = await api.post("/api/settings/integrations", { key: envKey, value: val.trim() });
+  if (r.ok) {
+    toast(val.trim() ? "Chave salva! Recarregue a página para ver o status atualizado." : "Chave removida.");
+    // Atualiza integrations do STATE para refletir nova config
+    const st = await api.get("/api/status");
+    if (st.integrations) { STATE.status.integrations = st.integrations; }
+    viewSettings();
+  } else {
+    toast(r.error || "Erro ao salvar", "err");
+  }
 }
 
 const SOCIAL_PLATFORMS = [
@@ -692,9 +752,14 @@ async function loadSocialStatus() {
         </button>
       </div>`
     : `<div style="text-align:center;padding:20px 0 8px">
-        <span class="material-icons-round" style="font-size:40px;color:var(--muted-2);display:block;margin-bottom:8px">link_off</span>
-        <p style="font-size:14px;font-weight:600;margin-bottom:4px">Publicação não ativada</p>
-        <p class="muted" style="font-size:13px">A integração de publicação não está ativa neste servidor.<br>Entre em contato com o administrador.</p>
+        <span class="material-icons-round" style="font-size:40px;color:var(--muted-2);display:block;margin-bottom:10px">link_off</span>
+        <p style="font-size:14px;font-weight:600;margin-bottom:6px">Publicação social não configurada</p>
+        <p class="muted" style="font-size:13px;max-width:380px;margin:0 auto 14px">
+          Adicione a chave <b>Ayrshare</b> em <b>Configurações → Chaves de API</b> para ativar a publicação em Instagram, TikTok e YouTube.
+        </p>
+        <button class="btn primary" onclick="navigate('settings')">
+          <span class="material-icons-round" style="font-size:16px">settings</span> Ir para Configurações
+        </button>
       </div>`;
 
   const connectedCount = SOCIAL_PLATFORMS.filter(p => connected.has(p.key)).length;
@@ -719,23 +784,12 @@ async function connectSocial(platform, btnEl) {
 }
 
 async function openAyrshareConnect(platform, btnEl) {
-  const origHtml = btnEl?.innerHTML;
-  if (btnEl) { btnEl.disabled = true; btnEl.innerHTML = '<span class="spinner"></span>'; }
-  try {
-    const r = await api.post("/api/social/connect-url", {});
-    if (!r.ok || !r.url) { toast(r.error || "Não foi possível gerar o link de conexão.", "err"); return; }
-    const popup = window.open(r.url, "ayrshare_connect", "width=740,height=680,scrollbars=yes,resizable=yes");
-    if (!popup) {
-      toast("Popup bloqueado! Permita popups para este site e tente novamente.", "err"); return;
-    }
-    toast("Autentique na janela aberta e clique em Atualizar quando concluir.");
-    // monitora o fechamento da janela para atualizar automaticamente
-    const interval = setInterval(() => {
-      if (popup.closed) { clearInterval(interval); loadSocialStatus(); }
-    }, 1000);
-  } finally {
-    if (btnEl) { btnEl.disabled = false; btnEl.innerHTML = origHtml; }
-  }
+  // Abre o dashboard Ayrshare onde o usuário conecta as redes sociais.
+  // Funciona com qualquer plano Ayrshare (sem JWT / Business plan).
+  window.open("https://app.ayrshare.com/dashboard/social-networks", "_blank", "width=1100,height=720");
+  toast("Conecte suas redes no Ayrshare e clique em Atualizar aqui quando pronto.");
+  // Aguarda 8s e atualiza automaticamente o status
+  setTimeout(() => loadSocialStatus(), 8000);
 }
 
 // ============================ PERFIL DE IA ============================
@@ -1026,7 +1080,7 @@ window.openPublish = openPublish; window.doPublish = doPublish; window.refreshAl
 window.startTutorial = startTutorial; window.tutNext = tutNext; window.tutPrev = tutPrev; window.tutEnd = tutEnd;
 window.fbAuth = fbAuth; window.recheckApproval = recheckApproval;
 window.connectSocial = connectSocial; window.openAyrshareConnect = openAyrshareConnect;
-window.loadSocialStatus = loadSocialStatus;
+window.loadSocialStatus = loadSocialStatus; window.editApiKey = editApiKey;
 window.toggleStep = toggleStep;
 window.uploadProfilePhoto = uploadProfilePhoto; window.uploadProfileVoice = uploadProfileVoice;
 window.testVoice = testVoice; window.generateTestVideo = generateTestVideo;

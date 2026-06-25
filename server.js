@@ -11,6 +11,18 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 import * as db from "./lib/db.js";
+
+// Chaves configuradas pelo admin via painel têm prioridade sobre .env.
+// Carrega no startup para que as verificações `configured()` já reflitam
+// o banco antes de qualquer request.
+const MANAGED_KEYS = [
+  "AYRSHARE_API_KEY", "ELEVENLABS_API_KEY", "HEYGEN_API_KEY",
+  "PEXELS_API_KEY", "NXS_API_KEY", "REPLICATE_API_TOKEN",
+];
+for (const k of MANAGED_KEYS) {
+  const v = db.getConfig(k);
+  if (v) process.env[k] = v; // DB > .env
+}
 import { hashPassword, verifyPassword, newToken, hashToken } from "./lib/auth.js";
 import {
   buildSystemPrompt,
@@ -193,25 +205,11 @@ app.get("/api/social/status", async (req, res) => {
   }
 });
 
-// Gera a URL JWT do Ayrshare para o usuario conectar as redes dele.
+// Retorna a URL do dashboard Ayrshare para o usuario conectar as redes.
+// Funciona com qualquer plano (sem necessidade de JWT / Business plan).
 app.post("/api/social/connect-url", async (req, res) => {
-  if (!ayrshareConfigured()) return fail(res, "Ayrshare nao configurado", 400);
-  try {
-    const { profileKey } = req.body || {};
-    const r = await fetch("https://api.ayrshare.com/api/profiles/generateJWT", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.AYRSHARE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ domain: "id", ...(profileKey ? { profileKey } : {}) }),
-    });
-    const data = await r.json();
-    if (!r.ok) return fail(res, data.message || `Ayrshare ${r.status}`, 400);
-    return ok(res, { url: data.url });
-  } catch (e) {
-    return fail(res, e);
-  }
+  if (!ayrshareConfigured()) return fail(res, "Configure a chave Ayrshare primeiro", 400);
+  return ok(res, { url: "https://app.ayrshare.com/dashboard/social-networks" });
 });
 
 // ---------------------------------------------------------------------
@@ -785,6 +783,29 @@ app.delete("/api/posts/:id", (req, res) => {
   if (!isOwner(req, db.find("posts", req.params.id))) return fail(res, "Post nao encontrado", 404);
   db.remove("posts", req.params.id);
   ok(res, {});
+});
+
+// ---------------------------------------------------------------------
+// CONFIGURACAO DE CHAVES DE API (admin ou modo aberto)
+// Salva no banco de dados — sem precisar editar arquivos no servidor.
+// ---------------------------------------------------------------------
+app.get("/api/settings/integrations", (req, res) => {
+  const mask = (v) => v ? `${v.slice(0, 4)}${"•".repeat(Math.max(4, Math.min(v.length - 8, 24)))}${v.slice(-4)}` : null;
+  const info = {};
+  for (const k of MANAGED_KEYS) {
+    info[k] = { configured: Boolean(process.env[k]), masked: mask(process.env[k]) };
+  }
+  ok(res, { keys: info });
+});
+
+app.post("/api/settings/integrations", async (req, res) => {
+  const { key, value } = req.body || {};
+  if (!MANAGED_KEYS.includes(key)) return fail(res, "Chave inválida", 400);
+  const val = String(value || "").trim();
+  db.setConfig(key, val || null);
+  if (val) process.env[key] = val;
+  else delete process.env[key];
+  ok(res, { saved: true, configured: Boolean(val) });
 });
 
 // --- Conexao de redes via Ayrshare (perfil por agencia/ownerId) ---
