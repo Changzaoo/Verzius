@@ -362,6 +362,104 @@ app.post("/api/clients/:id/voice", upload.array("samples", 5), async (req, res) 
 });
 
 // ---------------------------------------------------------------------
+// PERFIL DE IA — auto-cliente vinculado ao usuario logado
+// O perfil e um "client" especial com { self: true } para separar da lista.
+// ---------------------------------------------------------------------
+function getOrCreateProfile(req) {
+  const uid = req.userId || "demo";
+  let profile = db.list("clients").find(c => c.self && c.ownerId === uid);
+  if (!profile) {
+    profile = db.insert("clients", {
+      ownerId: uid,
+      self: true,
+      name: req.email ? req.email.split("@")[0] : "Meu perfil",
+      niche: "generico",
+      tone: "",
+      audience: "",
+      goal: "",
+      handle: "",
+      avatarId: null,
+      voiceId: null,
+      photoUrl: null,
+      stats: { videos: 0, views: 0 },
+    });
+  }
+  return profile;
+}
+
+app.get("/api/profile", (req, res) => {
+  const profile = db.list("clients").find(c => c.self && c.ownerId === (req.userId || "demo")) || null;
+  ok(res, { profile });
+});
+
+app.post("/api/profile/photo", upload.single("photo"), async (req, res) => {
+  try {
+    let profile = getOrCreateProfile(req);
+    if (!req.file) return fail(res, "Envie um arquivo de imagem", 400);
+    let fname = req.file.filename;
+    const ext = path.extname(req.file.originalname || "").toLowerCase();
+    if (ext && !fname.endsWith(ext)) {
+      try { fs.renameSync(path.join(UPLOAD_DIR, fname), path.join(UPLOAD_DIR, fname + ext)); fname += ext; } catch {}
+    }
+    const photoUrl = `/uploads/${fname}`;
+    const result = await registerAvatar({ name: profile.name, photoUrl });
+    const updated = db.update("clients", profile.id, {
+      photoUrl,
+      avatarId: result.avatarId || profile.avatarId,
+      avatarNote: result.note || null,
+      avatarDemo: Boolean(result.demo),
+    });
+    ok(res, { profile: updated, integration: result });
+  } catch (e) { fail(res, e); }
+});
+
+app.post("/api/profile/voice", upload.array("samples", 5), async (req, res) => {
+  try {
+    let profile = getOrCreateProfile(req);
+    const files = req.files || [];
+    if (!files.length) return fail(res, "Envie ao menos 1 audio", 400);
+    const samples = files.map(f => ({ filename: f.originalname, buffer: fs.readFileSync(f.path) }));
+    const result = await cloneVoice({ name: `${profile.name} - perfil`, samples });
+    const updated = db.update("clients", profile.id, { voiceId: result.voiceId, voiceDemo: Boolean(result.demo) });
+    ok(res, { profile: updated, integration: result });
+  } catch (e) { fail(res, e); }
+});
+
+app.post("/api/profile/voice-test", async (req, res) => {
+  try {
+    const profile = db.list("clients").find(c => c.self && c.ownerId === (req.userId || "demo"));
+    if (!profile?.voiceId) return fail(res, "Voz nao clonada ainda", 400);
+    const text = req.body?.text || "Olá! Esta é minha voz clonada.";
+    const { buffer } = await textToSpeech({ text, voiceId: profile.voiceId });
+    const fname = `voice-test-${Date.now()}.mp3`;
+    fs.writeFileSync(path.join(UPLOAD_DIR, fname), buffer);
+    ok(res, { audioUrl: `/uploads/${fname}` });
+  } catch (e) { fail(res, e); }
+});
+
+app.post("/api/profile/test-video", async (req, res) => {
+  try {
+    const profile = db.list("clients").find(c => c.self && c.ownerId === (req.userId || "demo"));
+    if (!profile) return fail(res, "Configure o perfil primeiro", 400);
+    const { theme = "como ser mais produtivo" } = req.body || {};
+    // gera 1 variacao de roteiro
+    let variation;
+    if (llmConfigured()) {
+      const { buildSystemPrompt: bsp, buildUserPrompt: bup } = await import("./lib/viral-engine.js");
+      const parsed = await generateWithLLM({ system: bsp(profile), user: bup({ theme, count: 1 }) });
+      variation = parsed?.variations?.[0];
+    }
+    if (!variation) {
+      const demo = demoScripts({ theme, niche: profile.niche || "generico", count: 1 });
+      variation = demo.variations?.[0];
+    }
+    // salva roteiro e dispara producao de video
+    const script = db.insert("scripts", { ownerId: req.userId, clientId: profile.id, theme, hook: variation.hook, variation });
+    ok(res, { hook: variation.hook, script: variation.script, scriptId: script.id });
+  } catch (e) { fail(res, e); }
+});
+
+// ---------------------------------------------------------------------
 // ROTEIROS (o core)
 // ---------------------------------------------------------------------
 app.post("/api/scripts/generate", async (req, res) => {

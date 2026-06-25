@@ -161,7 +161,7 @@ function showApp() {
 function navigate(view) {
   STATE.currentView = view;
   document.querySelectorAll(".sidebar nav a").forEach(a => a.classList.toggle("active", a.dataset.view === view));
-  const fn = { dashboard: viewDashboard, clients: viewClients, studio: viewStudio, videos: viewVideos, posts: viewPosts, calendar: viewCalendar, admin: viewAdmin, settings: viewSettings }[view];
+  const fn = { dashboard: viewDashboard, clients: viewClients, studio: viewStudio, videos: viewVideos, posts: viewPosts, calendar: viewCalendar, admin: viewAdmin, settings: viewSettings, profile: viewProfile }[view];
   if (fn) fn();
 }
 
@@ -593,103 +593,124 @@ async function genPlan() {
 // ============================ CONFIGURAÇÕES ============================
 async function viewSettings() {
   const s = STATE.status.integrations;
-  const badge = (on, label) => on
-    ? `<span class="tag green">✓ ${label || "conectado"}</span>`
+  const badge = (on) => on
+    ? `<span class="tag green"><span class="material-icons-round" style="font-size:12px;vertical-align:middle">check</span> conectado</span>`
     : `<span class="tag amber">não configurado</span>`;
 
-  const intCard = (icon, name, desc, ok, extra = "") => `
+  // icon: classe .int-icon color | material icon name
+  const intCard = (color, icon, name, desc, on) => `
     <div class="integration-card">
       <div class="integration-info">
-        <div class="integration-dot">${icon}</div>
+        <span class="material-icons-round int-icon ${color}">${icon}</span>
         <div>
           <div style="font-weight:600;font-size:14px">${name}</div>
           <div class="muted" style="font-size:12px;margin-top:2px">${desc}</div>
         </div>
       </div>
-      <div class="row" style="gap:8px">${extra}${badge(ok)}</div>
+      ${badge(on)}
     </div>`;
 
   $("view").innerHTML = `
-    <h1>⚙️ Configurações</h1>
-    <p class="page-sub">Integrações e redes sociais da sua agência.</p>
+    <h1>Configurações</h1>
+    <p class="page-sub">Integrações de produção e redes sociais da sua agência.</p>
 
-    <h2 style="margin-bottom:12px">Integrações de produção</h2>
-    ${intCard("🧠", "Roteiro (LLM / NXS)", "Gera roteiros virais com IA — NXS (custo zero) ou OpenAI/Anthropic", s.llm.configured)}
-    ${intCard("🎙️", "Voz (ElevenLabs)", "Clona a voz a partir do áudio enviado pelo cliente", s.voice.configured)}
-    ${intCard("🧑", "Avatar (HeyGen / SadTalker)", "Lip-sync: rosto falante gerado automaticamente", s.avatar.configured)}
-    ${intCard("✂️", "Edição automática (FFmpeg)", "Legendas karaoke queimadas, B-roll, 9:16 — sem instalar nada", s.editor?.configured)}
-    ${intCard("🎞️", "B-roll (Pexels)", "Clipes de fundo verticais reais para cada cena do roteiro", s.broll?.configured)}
+    <h2 style="margin-bottom:10px">Integrações</h2>
+    ${intCard("blue",   "psychology",     "Roteiro (LLM / NXS)",          "Gera roteiros virais — NXS gratuito ou OpenAI/Anthropic",            s.llm.configured)}
+    ${intCard("green",  "mic",            "Voz (ElevenLabs)",              "Clona a voz a partir do áudio enviado pelo cliente",                  s.voice.configured)}
+    ${intCard("purple", "face",           "Avatar (HeyGen / SadTalker)",   "Lip-sync: rosto falante gerado automaticamente",                      s.avatar.configured)}
+    ${intCard("orange", "movie_filter",   "Edição automática (FFmpeg)",    "Legendas karaoke queimadas, B-roll, formato 9:16",                    s.editor?.configured)}
+    ${intCard("teal",   "video_library",  "B-roll (Pexels)",               "Clipes de fundo verticais reais para cada cena",                      s.broll?.configured)}
+    ${intCard("indigo", "share",          "Publicação (Ayrshare)",         "Publica em Instagram, TikTok e YouTube com um clique",                s.publish?.configured)}
 
-    <h2 style="margin:24px 0 12px">Redes sociais</h2>
+    <h2 style="margin:28px 0 10px">Redes sociais</h2>
     <div id="socialSection">
-      <div class="card" style="text-align:center;padding:32px"><span class="spinner"></span><div class="muted" style="margin-top:10px;font-size:13px">Verificando conexões…</div></div>
-    </div>
-
-    <div class="card" style="margin-top:20px">
-      <h2>Como ativar o modo LIVE</h2>
-      <ol style="line-height:2.1;color:var(--text-2);padding-left:18px;font-size:13.5px">
-        <li>Edite o arquivo <code>.env</code> na pasta do projeto</li>
-        <li>Cole suas chaves (ElevenLabs, HeyGen, Pexels, NXS…)</li>
-        <li>Reinicie o servidor: <code>npm start</code></li>
-      </ol>
-      <p class="muted" style="font-size:12px;margin-top:10px">As chaves ficam só no seu servidor (arquivo .env) — nunca são enviadas ao navegador.</p>
+      <div class="card" style="text-align:center;padding:32px">
+        <span class="spinner"></span>
+        <div class="muted" style="margin-top:10px;font-size:13px">Verificando conexões…</div>
+      </div>
     </div>`;
 
-  // Carrega status das redes sociais de forma assíncrona
   loadSocialStatus();
 }
 
 const SOCIAL_PLATFORMS = [
-  { key: "instagram", icon: "ig",  label: "Instagram", emoji: "📸" },
-  { key: "tiktok",   icon: "tt",  label: "TikTok",    emoji: "🎵" },
-  { key: "youtube",  icon: "yt",  label: "YouTube",   emoji: "▶️" },
-  { key: "linkedin", icon: "li",  label: "LinkedIn",  emoji: "💼" },
+  { key: "instagram", icon: "ig", label: "Instagram", sub: "Reels e feed", svgColor: "#e1306c" },
+  { key: "tiktok",   icon: "tt", label: "TikTok",    sub: "Vídeos curtos", svgColor: "#010101" },
+  { key: "youtube",  icon: "yt", label: "YouTube",   sub: "Shorts e canal", svgColor: "#ff0000" },
+  { key: "linkedin", icon: "li", label: "LinkedIn",  sub: "Vídeos profissionais", svgColor: "#0077b5" },
+  { key: "twitter",  icon: "tw", label: "X (Twitter)", sub: "Vídeos e clipes", svgColor: "#14171a" },
+  { key: "facebook", icon: "fb", label: "Facebook",  sub: "Reels e feed", svgColor: "#1877f2" },
 ];
+
+// SVG logos das plataformas (sem emojis)
+const SOCIAL_SVG = {
+  ig: `<svg viewBox="0 0 24 24" fill="white" width="20" height="20"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>`,
+  tt: `<svg viewBox="0 0 24 24" fill="white" width="20" height="20"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.3 6.3 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.69a8.19 8.19 0 004.79 1.53V6.78a4.85 4.85 0 01-1.02-.09z"/></svg>`,
+  yt: `<svg viewBox="0 0 24 24" fill="white" width="20" height="20"><path d="M23.495 6.205a3.007 3.007 0 00-2.088-2.088c-1.87-.501-9.396-.501-9.396-.501s-7.507-.01-9.396.501A3.007 3.007 0 00.527 6.205a31.247 31.247 0 00-.522 5.805 31.247 31.247 0 00.522 5.783 3.007 3.007 0 002.088 2.088c1.868.502 9.396.502 9.396.502s7.506 0 9.396-.502a3.007 3.007 0 002.088-2.088 31.247 31.247 0 00.5-5.783 31.247 31.247 0 00-.5-5.805zM9.609 15.601V8.408l6.264 3.602z"/></svg>`,
+  li: `<svg viewBox="0 0 24 24" fill="white" width="20" height="20"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>`,
+  tw: `<svg viewBox="0 0 24 24" fill="white" width="20" height="20"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>`,
+  fb: `<svg viewBox="0 0 24 24" fill="white" width="20" height="20"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>`,
+};
 
 async function loadSocialStatus() {
   const sec = $("socialSection");
   if (!sec) return;
   const r = await api.get("/api/social/status");
   const connected = new Set((r.platforms || []).map(p => p.toLowerCase()));
-  const ayrshare = r.configured;
+  const ready = r.configured;
 
   const cards = SOCIAL_PLATFORMS.map(p => {
     const isOn = connected.has(p.key);
+    const svg = SOCIAL_SVG[p.icon] || "";
     return `
       <div class="social-card" style="margin-bottom:8px">
-        <div class="social-icon ${p.icon}">${p.emoji}</div>
-        <div>
-          <div style="font-weight:600">${p.label}</div>
-          <div class="muted" style="font-size:12px;margin-top:2px">${isOn ? "Conta conectada" : "Não conectado"}</div>
+        <div class="social-icon ${p.icon}" style="background:${p.svgColor}">${svg}</div>
+        <div style="flex:1">
+          <div style="font-weight:600;font-size:14px">${p.label}</div>
+          <div class="muted" style="font-size:12px;margin-top:2px">${isOn ? "✓ Conta conectada" : p.sub}</div>
         </div>
-        <div class="social-connect-btn">
+        <div>
           ${isOn
-            ? `<span class="tag green">✓ ativo</span>`
-            : ayrshare
-              ? `<button class="btn sm primary" onclick="connectSocial('${p.key}')">+ Conectar</button>`
-              : `<span class="tag amber">config. Ayrshare</span>`}
+            ? `<span class="tag green">Ativo</span>`
+            : ready
+              ? `<button class="btn sm primary" onclick="connectSocial('${p.key}', this)">
+                  <span class="material-icons-round" style="font-size:15px">add_link</span> Conectar
+                </button>`
+              : `<span class="tag" style="opacity:.6">–</span>`}
         </div>
       </div>`;
   }).join("");
 
-  const ayrInfo = ayrshare
-    ? `<div class="row" style="gap:8px;margin-top:16px">
-        <button class="btn primary" onclick="openAyrshareConnect()">🔗 Gerenciar todas as contas</button>
-        <button class="btn ghost sm" onclick="loadSocialStatus()">↻ Atualizar</button>
+  const foot = ready
+    ? `<div class="row" style="gap:8px;margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+        <button class="btn primary" onclick="openAyrshareConnect(null, this)">
+          <span class="material-icons-round" style="font-size:16px">open_in_new</span>
+          Gerenciar todas as contas
+        </button>
+        <button class="btn ghost sm" onclick="loadSocialStatus()">
+          <span class="material-icons-round" style="font-size:16px">refresh</span> Atualizar
+        </button>
       </div>`
-    : `<p class="muted" style="font-size:13px;margin-top:16px">Configure <code>AYRSHARE_API_KEY</code> no <code>.env</code> para conectar as redes sociais.</p>`;
+    : `<div style="text-align:center;padding:20px 0 8px">
+        <span class="material-icons-round" style="font-size:40px;color:var(--muted-2);display:block;margin-bottom:8px">link_off</span>
+        <p style="font-size:14px;font-weight:600;margin-bottom:4px">Publicação não ativada</p>
+        <p class="muted" style="font-size:13px">A integração de publicação não está ativa neste servidor.<br>Entre em contato com o administrador.</p>
+      </div>`;
 
+  const connectedCount = SOCIAL_PLATFORMS.filter(p => connected.has(p.key)).length;
   sec.innerHTML = `
     <div class="card">
       <div class="row between" style="margin-bottom:16px">
         <div>
-          <b style="font-size:14px">Contas nas redes</b>
-          <div class="muted" style="font-size:12px;margin-top:2px">via <b>Ayrshare</b> — conecte uma vez, publique em todas</div>
+          <b style="font-size:14px">Contas nas redes sociais</b>
+          <div class="muted" style="font-size:12px;margin-top:2px">Conecte uma vez e publique em todas com um clique</div>
         </div>
-        ${ayrshare ? `<span class="tag green">Ayrshare ativo</span>` : `<span class="tag amber">Ayrshare não configurado</span>`}
+        ${ready
+          ? `<span class="tag ${connectedCount > 0 ? "green" : "brand"}">${connectedCount > 0 ? connectedCount + " conectada(s)" : "Pronto para conectar"}</span>`
+          : `<span class="tag">Aguardando ativação</span>`}
       </div>
       ${cards}
-      ${ayrInfo}
+      ${foot}
     </div>`;
 }
 
@@ -698,12 +719,204 @@ async function connectSocial(platform, btnEl) {
 }
 
 async function openAyrshareConnect(platform, btnEl) {
+  const origHtml = btnEl?.innerHTML;
   if (btnEl) { btnEl.disabled = true; btnEl.innerHTML = '<span class="spinner"></span>'; }
-  const r = await api.post("/api/social/connect-url", {});
-  if (btnEl) { btnEl.disabled = false; btnEl.textContent = platform ? "+ Conectar" : "🔗 Gerenciar todas as contas"; }
-  if (!r.ok || !r.url) return toast(r.error || "Erro ao gerar link", "err");
-  window.open(r.url, "_blank", "width=720,height=660,scrollbars=yes");
-  toast("Autentique na janela e clique em ↻ Atualizar ao concluir.");
+  try {
+    const r = await api.post("/api/social/connect-url", {});
+    if (!r.ok || !r.url) { toast(r.error || "Não foi possível gerar o link de conexão.", "err"); return; }
+    const popup = window.open(r.url, "ayrshare_connect", "width=740,height=680,scrollbars=yes,resizable=yes");
+    if (!popup) {
+      toast("Popup bloqueado! Permita popups para este site e tente novamente.", "err"); return;
+    }
+    toast("Autentique na janela aberta e clique em Atualizar quando concluir.");
+    // monitora o fechamento da janela para atualizar automaticamente
+    const interval = setInterval(() => {
+      if (popup.closed) { clearInterval(interval); loadSocialStatus(); }
+    }, 1000);
+  } finally {
+    if (btnEl) { btnEl.disabled = false; btnEl.innerHTML = origHtml; }
+  }
+}
+
+// ============================ PERFIL DE IA ============================
+async function viewProfile() {
+  const r = await api.get("/api/profile");
+  const p = r.profile || {};
+  const hasPhoto = Boolean(p.photoUrl);
+  const hasVoice = Boolean(p.voiceId);
+  const isComplete = hasPhoto && hasVoice;
+
+  $("view").innerHTML = `
+    <h1>Perfil de IA</h1>
+    <p class="page-sub">Configure seu rosto e voz uma vez — gere vídeos com você falando qualquer roteiro.</p>
+
+    ${isComplete ? `
+    <div class="profile-complete-banner">
+      <span class="material-icons-round" style="font-size:32px;color:var(--green)">verified</span>
+      <div>
+        <div style="font-weight:700;font-size:15px">Perfil completo!</div>
+        <div class="muted" style="font-size:13px">Seu rosto e voz estão prontos. Vá em <b>Estúdio</b> para gerar um roteiro e depois em <b>Vídeos</b> para produzir.</div>
+      </div>
+      <button class="btn primary" style="margin-left:auto;flex-shrink:0" onclick="navigate('studio')">
+        <span class="material-icons-round" style="font-size:16px">edit_note</span> Gerar roteiro
+      </button>
+    </div>` : ""}
+
+    <!-- PASSO 1: ROSTO -->
+    <div class="profile-step" id="stepFace">
+      <div class="profile-step-header" onclick="toggleStep('stepFace')">
+        <div class="step-num ${hasPhoto ? "done" : "active"}">${hasPhoto ? "✓" : "1"}</div>
+        <span class="material-icons-round int-icon purple" style="margin:0">face</span>
+        <div style="flex:1">
+          <div style="font-weight:600">Seu rosto (foto)</div>
+          <div class="muted" style="font-size:12px">${hasPhoto ? "Foto enviada — avatar pronto para lip-sync" : "Envie uma foto sua para criar o avatar falante"}</div>
+        </div>
+        <span class="material-icons-round" style="color:var(--muted)">expand_more</span>
+      </div>
+      <div class="profile-step-body" id="stepFaceBody">
+        <div style="padding-top:16px">
+          ${hasPhoto ? `<img src="${p.photoUrl}" class="profile-preview-img" alt="Sua foto" /><br>` : ""}
+          <p class="muted" style="font-size:13px;margin:${hasPhoto ? "12px" : "0"} 0 14px">
+            Use uma foto <b>frontal, com boa iluminação</b>, olhando para a câmera. Evite óculos escuros ou bonés.
+          </p>
+          <div class="field">
+            <label>Selecione a foto (JPG/PNG)</label>
+            <input type="file" id="prof_photo" accept="image/*">
+          </div>
+          <button class="btn primary" onclick="uploadProfilePhoto(this)">
+            <span class="material-icons-round" style="font-size:16px">upload</span>
+            ${hasPhoto ? "Trocar foto" : "Enviar foto"}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- PASSO 2: VOZ -->
+    <div class="profile-step" id="stepVoice">
+      <div class="profile-step-header" onclick="toggleStep('stepVoice')">
+        <div class="step-num ${hasVoice ? "done" : hasPhoto ? "active" : ""}">${hasVoice ? "✓" : "2"}</div>
+        <span class="material-icons-round int-icon green" style="margin:0">mic</span>
+        <div style="flex:1">
+          <div style="font-weight:600">Sua voz (clone)</div>
+          <div class="muted" style="font-size:12px">${hasVoice ? "Voz clonada — pronta para narrar qualquer roteiro" : "Envie áudio para a IA aprender a imitar sua voz"}</div>
+        </div>
+        <span class="material-icons-round" style="color:var(--muted)">expand_more</span>
+      </div>
+      <div class="profile-step-body" id="stepVoiceBody">
+        <div style="padding-top:16px">
+          <p class="muted" style="font-size:13px;margin-bottom:14px">
+            Envie <b>1 a 5 minutos</b> de você falando naturalmente — como uma explicação ou conversa. Qualidade de microfone é importante.
+          </p>
+          <div class="field">
+            <label>Arquivo(s) de áudio (MP3/WAV/M4A)</label>
+            <input type="file" id="prof_voice" accept="audio/*" multiple>
+          </div>
+          <button class="btn primary" onclick="uploadProfileVoice(this)">
+            <span class="material-icons-round" style="font-size:16px">graphic_eq</span>
+            ${hasVoice ? "Reclone a voz" : "Clonar minha voz"}
+          </button>
+          ${hasVoice ? `
+          <button class="btn" style="margin-left:8px" onclick="testVoice()">
+            <span class="material-icons-round" style="font-size:16px">play_arrow</span> Testar voz
+          </button>` : ""}
+          <div id="voiceTestOut" style="margin-top:10px"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PASSO 3: VÍDEO DE TESTE -->
+    <div class="profile-step" id="stepVideo">
+      <div class="profile-step-header" onclick="toggleStep('stepVideo')">
+        <div class="step-num ${isComplete ? "active" : ""}" style="${!isComplete ? "opacity:.4" : ""}">3</div>
+        <span class="material-icons-round int-icon orange" style="margin:0;${!isComplete ? "opacity:.4" : ""}">movie_filter</span>
+        <div style="flex:1">
+          <div style="font-weight:600" style="${!isComplete ? "opacity:.5" : ""}">Vídeo de teste</div>
+          <div class="muted" style="font-size:12px">${isComplete ? "Gere um vídeo curto com você falando um roteiro de exemplo" : "Complete os passos 1 e 2 primeiro"}</div>
+        </div>
+        <span class="material-icons-round" style="color:var(--muted)">expand_more</span>
+      </div>
+      <div class="profile-step-body" id="stepVideoBody">
+        <div style="padding-top:16px">
+          ${!isComplete ? `
+          <div class="test-video-card">
+            <span class="material-icons-round" style="font-size:48px;color:var(--muted-2)">lock</span>
+            <p class="muted" style="margin-top:8px">Configure o rosto e a voz primeiro.</p>
+          </div>` : `
+          <div class="field">
+            <label>Tema do vídeo de teste</label>
+            <input id="prof_theme" placeholder="ex: como ser mais produtivo de manhã" value="">
+          </div>
+          <div id="testVideoResult"></div>
+          <button class="btn primary" id="testVideoBtn" onclick="generateTestVideo(this)">
+            <span class="material-icons-round" style="font-size:16px">auto_awesome</span>
+            Gerar vídeo de teste
+          </button>`}
+        </div>
+      </div>
+    </div>`;
+}
+
+function toggleStep(id) {
+  const body = $(`${id}Body`);
+  if (!body) return;
+  const isOpen = body.style.display !== "none";
+  body.style.display = isOpen ? "none" : "";
+}
+
+async function uploadProfilePhoto(btn) {
+  const f = $("prof_photo").files[0];
+  if (!f) return toast("Selecione uma imagem", "err");
+  const fd = new FormData(); fd.append("photo", f);
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Enviando...';
+  const r = await api.upload("/api/profile/photo", fd);
+  btn.disabled = false;
+  if (r.ok) { toast("Foto salva! Seu avatar está pronto."); viewProfile(); }
+  else toast(r.error || "Erro ao enviar foto", "err");
+}
+
+async function uploadProfileVoice(btn) {
+  const files = $("prof_voice").files;
+  if (!files.length) return toast("Selecione ao menos um arquivo de áudio", "err");
+  const fd = new FormData();
+  [...files].forEach(f => fd.append("samples", f));
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Clonando voz...';
+  const r = await api.upload("/api/profile/voice", fd);
+  btn.disabled = false;
+  if (r.ok) { toast("Voz clonada com sucesso!"); viewProfile(); }
+  else toast(r.error || "Erro ao clonar voz", "err");
+}
+
+async function testVoice() {
+  const out = $("voiceTestOut");
+  out.innerHTML = '<span class="spinner"></span>';
+  const r = await api.post("/api/profile/voice-test", { text: "Olá! Esta é minha voz clonada pela inteligência artificial. Ficou parecida?" });
+  if (r.ok && r.audioUrl) {
+    out.innerHTML = `<audio controls style="width:100%;margin-top:8px" src="${r.audioUrl}"></audio>`;
+  } else {
+    out.innerHTML = `<span class="err">${r.error || "Erro ao gerar áudio"}</span>`;
+  }
+}
+
+async function generateTestVideo(btn) {
+  const theme = $("prof_theme")?.value?.trim();
+  if (!theme) return toast("Informe o tema do vídeo", "err");
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Gerando roteiro e vídeo...';
+  const out = $("testVideoResult");
+  out.innerHTML = "";
+  const r = await api.post("/api/profile/test-video", { theme });
+  btn.disabled = false;
+  btn.innerHTML = '<span class="material-icons-round" style="font-size:16px">auto_awesome</span> Gerar vídeo de teste';
+  if (r.ok) {
+    out.innerHTML = `
+      <div class="card" style="margin-bottom:12px;background:var(--surface-2)">
+        <div style="font-weight:600;margin-bottom:6px">Roteiro gerado:</div>
+        <p style="font-size:13px;color:var(--text-2);line-height:1.6">${r.hook || ""} ${r.script || ""}</p>
+        ${r.videoId ? `<div style="margin-top:10px"><a class="btn sm primary" href="/api/videos/${r.videoId}/status" target="_blank">Ver vídeo</a></div>` : ""}
+      </div>`;
+    toast("Vídeo em produção! Veja em Vídeos.");
+  } else {
+    toast(r.error || "Erro ao gerar vídeo", "err");
+  }
 }
 
 // ============================ ADMIN — APROVAÇÕES ============================
@@ -814,3 +1027,6 @@ window.startTutorial = startTutorial; window.tutNext = tutNext; window.tutPrev =
 window.fbAuth = fbAuth; window.recheckApproval = recheckApproval;
 window.connectSocial = connectSocial; window.openAyrshareConnect = openAyrshareConnect;
 window.loadSocialStatus = loadSocialStatus;
+window.toggleStep = toggleStep;
+window.uploadProfilePhoto = uploadProfilePhoto; window.uploadProfileVoice = uploadProfileVoice;
+window.testVoice = testVoice; window.generateTestVideo = generateTestVideo;

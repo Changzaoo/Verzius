@@ -6,6 +6,7 @@
   <title>Verzius — Agência de Vídeos Virais com IA</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet" />
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
@@ -26,16 +27,17 @@
       <div class="logo">▶ Verz<span>ius</span></div>
       <nav>
         <div class="nav-label">Visão geral</div>
-        <a data-view="dashboard" class="active">📊 Dashboard</a>
-        <a data-view="clients">👥 Clientes</a>
+        <a data-view="dashboard" class="active"><span class="material-icons-round nav-icon">dashboard</span>Dashboard</a>
+        <a data-view="clients"><span class="material-icons-round nav-icon">group</span>Clientes</a>
         <div class="nav-label">Produção</div>
-        <a data-view="studio">✍️ Estúdio de Roteiro</a>
-        <a data-view="videos">🎬 Vídeos</a>
-        <a data-view="posts">🚀 Publicações</a>
-        <a data-view="calendar">📅 Calendário</a>
+        <a data-view="profile"><span class="material-icons-round nav-icon">face</span>Perfil de IA</a>
+        <a data-view="studio"><span class="material-icons-round nav-icon">edit_note</span>Estúdio de Roteiro</a>
+        <a data-view="videos"><span class="material-icons-round nav-icon">movie</span>Vídeos</a>
+        <a data-view="posts"><span class="material-icons-round nav-icon">rocket_launch</span>Publicações</a>
+        <a data-view="calendar"><span class="material-icons-round nav-icon">calendar_month</span>Calendário</a>
         <div class="nav-label">Sistema</div>
-        <a data-view="admin" id="navAdmin" class="hidden">🛡️ Aprovações</a>
-        <a data-view="settings">⚙️ Configurações</a>
+        <a data-view="admin" id="navAdmin" class="hidden"><span class="material-icons-round nav-icon">shield</span>Aprovações</a>
+        <a data-view="settings"><span class="material-icons-round nav-icon">settings</span>Configurações</a>
       </nav>
       <button class="help-fab" onclick="startTutorial()">🎓 Tutorial guiado</button>
       <div class="mode-badge" id="modeBadge">...</div>
