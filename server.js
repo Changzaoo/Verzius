@@ -923,8 +923,8 @@ app.get("*", (req, res) => res.sendFile(path.join(__dirname, "public", "index.ht
 
 // Em ambiente serverless (Vercel) nao damos listen — exportamos o app.
 if (!process.env.VERCEL) {
-  app.listen(PORT, () => {
-    console.log(`\n  VERZIUS rodando em http://localhost:${PORT}`);
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`\n  VERZIUS rodando em http://0.0.0.0:${PORT}`);
     console.log(`  Modo: ${llmConfigured() ? "LIVE (APIs conectadas)" : "DEMO (sem chaves)"}\n`);
   });
 }
