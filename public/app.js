@@ -662,8 +662,8 @@ async function viewSettings() {
     ? `<span class="tag green"><span class="material-icons-round" style="font-size:12px;vertical-align:middle">check</span> conectado</span>`
     : `<span class="tag amber">não configurado</span>`;
 
-  // Carrega estado atual das chaves do banco
-  const kr = await api.get("/api/settings/integrations");
+  // Carrega estado atual das chaves do banco (servidor local — persistente)
+  const kr = await aiApi.get("/api/settings/integrations");
   const keys = kr.keys || {};
 
   const keyCard = (envKey, icon, color, label) => {
@@ -764,11 +764,11 @@ function toggleApiKeyVisible() {
 
 async function saveApiKeyModal(envKey) {
   const val = ($("apikey_input")?.value || "").trim();
-  const r = await api.post("/api/settings/integrations", { key: envKey, value: val });
+  const r = await aiApi.post("/api/settings/integrations", { key: envKey, value: val });
   if (r.ok) {
     closeModal();
     toast(val ? "Chave salva com sucesso." : "Chave removida.");
-    const st = await api.get("/api/status");
+    const st = await aiApi.get("/api/status");
     if (st.integrations) STATE.status.integrations = st.integrations;
     viewSettings();
   } else {
@@ -798,7 +798,7 @@ const SOCIAL_SVG = {
 async function loadSocialStatus() {
   const sec = $("socialSection");
   if (!sec) return;
-  const r = await api.get("/api/social/status");
+  const r = await aiApi.get("/api/social/status");
   const connected = new Set((r.platforms || []).map(p => p.toLowerCase()));
   const ready = r.configured;
 
@@ -856,7 +856,7 @@ async function loadSocialStatus() {
 }
 
 async function connectSocial(platform, btnEl) {
-  const r = await api.get("/api/social/status");
+  const r = await aiApi.get("/api/social/status");
   if (!r.configured) {
     toast("Configure a chave Ayrshare em Chaves de API antes de conectar.", "err");
     document.querySelector("#kcard_AYRSHARE_API_KEY")?.scrollIntoView({ behavior: "smooth", block: "center" });
