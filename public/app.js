@@ -592,22 +592,9 @@ async function genPlan() {
 
 // ============================ CONFIGURAÇÕES ============================
 async function viewSettings() {
-  const s = STATE.status.integrations;
   const badge = (on) => on
     ? `<span class="tag green"><span class="material-icons-round" style="font-size:12px;vertical-align:middle">check</span> conectado</span>`
     : `<span class="tag amber">não configurado</span>`;
-
-  const intCard = (color, icon, name, desc, on) => `
-    <div class="integration-card">
-      <div class="integration-info">
-        <span class="material-icons-round int-icon ${color}">${icon}</span>
-        <div>
-          <div style="font-weight:600;font-size:14px">${name}</div>
-          <div class="muted" style="font-size:12px;margin-top:2px">${desc}</div>
-        </div>
-      </div>
-      ${badge(on)}
-    </div>`;
 
   // Carrega estado atual das chaves do banco
   const kr = await api.get("/api/settings/integrations");
@@ -649,14 +636,6 @@ async function viewSettings() {
       ${keyCard("NXS_API_KEY",         "psychology",    "blue",   "NXS / LLM — Geração de roteiro")}
       ${keyCard("REPLICATE_API_TOKEN", "movie_filter",  "orange", "Replicate — SadTalker avatar")}
     </div>
-
-    <h2 style="margin-bottom:10px">Integrações</h2>
-    ${intCard("blue",   "psychology",     "Roteiro (LLM / NXS)",          "Gera roteiros virais — NXS gratuito ou OpenAI/Anthropic",            s.llm.configured)}
-    ${intCard("green",  "mic",            "Voz (ElevenLabs)",              "Clona a voz a partir do áudio enviado pelo cliente",                  s.voice.configured)}
-    ${intCard("purple", "face",           "Avatar (HeyGen / SadTalker)",   "Lip-sync: rosto falante gerado automaticamente",                      s.avatar.configured)}
-    ${intCard("orange", "movie_filter",   "Edição automática (FFmpeg)",    "Legendas karaoke queimadas, B-roll, formato 9:16",                    s.editor?.configured)}
-    ${intCard("teal",   "video_library",  "B-roll (Pexels)",               "Clipes de fundo verticais reais para cada cena",                      s.broll?.configured)}
-    ${intCard("indigo", "share",          "Publicação (Ayrshare)",         "Publica em Instagram, TikTok e YouTube com um clique",                s.publish?.configured)}
 
     <h2 style="margin:28px 0 10px">Redes sociais</h2>
     <div id="socialSection">
@@ -732,35 +711,28 @@ async function loadSocialStatus() {
         <div>
           ${isOn
             ? `<span class="tag green">Ativo</span>`
-            : ready
-              ? `<button class="btn sm primary" onclick="connectSocial('${p.key}', this)">
-                  <span class="material-icons-round" style="font-size:15px">add_link</span> Conectar
-                </button>`
-              : `<span class="tag" style="opacity:.6">–</span>`}
+            : `<button class="btn sm primary" onclick="connectSocial('${p.key}', this)">
+                <span class="material-icons-round" style="font-size:15px">add_link</span> Conectar
+              </button>`}
         </div>
       </div>`;
   }).join("");
 
-  const foot = ready
-    ? `<div class="row" style="gap:8px;margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
-        <button class="btn primary" onclick="openAyrshareConnect(null, this)">
+  const foot = `<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+    <div class="row" style="gap:8px;margin-bottom:${ready ? "0" : "12px"}">
+      ${ready ? `<button class="btn primary" onclick="openAyrshareConnect(null, this)">
           <span class="material-icons-round" style="font-size:16px">open_in_new</span>
           Gerenciar todas as contas
-        </button>
-        <button class="btn ghost sm" onclick="loadSocialStatus()">
-          <span class="material-icons-round" style="font-size:16px">refresh</span> Atualizar
-        </button>
-      </div>`
-    : `<div style="text-align:center;padding:20px 0 8px">
-        <span class="material-icons-round" style="font-size:40px;color:var(--muted-2);display:block;margin-bottom:10px">link_off</span>
-        <p style="font-size:14px;font-weight:600;margin-bottom:6px">Publicação social não configurada</p>
-        <p class="muted" style="font-size:13px;max-width:380px;margin:0 auto 14px">
-          Adicione a chave <b>Ayrshare</b> em <b>Configurações → Chaves de API</b> para ativar a publicação em Instagram, TikTok e YouTube.
-        </p>
-        <button class="btn primary" onclick="navigate('settings')">
-          <span class="material-icons-round" style="font-size:16px">settings</span> Ir para Configurações
-        </button>
-      </div>`;
+        </button>` : ""}
+      <button class="btn ghost sm" onclick="loadSocialStatus()">
+        <span class="material-icons-round" style="font-size:16px">refresh</span> Atualizar
+      </button>
+    </div>
+    ${!ready ? `<p class="muted" style="font-size:12px;margin-top:8px">
+      <span class="material-icons-round" style="font-size:14px;vertical-align:middle;color:var(--amber)">info</span>
+      Para ativar: adicione a chave <b>Ayrshare</b> em <b>Chaves de API</b> acima, depois clique em Conectar em cada rede.
+    </p>` : ""}
+  </div>`;
 
   const connectedCount = SOCIAL_PLATFORMS.filter(p => connected.has(p.key)).length;
   sec.innerHTML = `
@@ -780,6 +752,13 @@ async function loadSocialStatus() {
 }
 
 async function connectSocial(platform, btnEl) {
+  const r = await api.get("/api/social/status");
+  if (!r.configured) {
+    toast("Configure a chave Ayrshare em Chaves de API antes de conectar.", "err");
+    // Rola a página até a seção de chaves
+    document.querySelector("#kcard_AYRSHARE_API_KEY")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    return;
+  }
   await openAyrshareConnect(platform, btnEl);
 }
 
