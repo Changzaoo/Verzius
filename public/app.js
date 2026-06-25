@@ -648,24 +648,50 @@ async function viewSettings() {
   loadSocialStatus();
 }
 
-async function editApiKey(envKey) {
+function editApiKey(envKey) {
   const labels = {
-    AYRSHARE_API_KEY:    "Ayrshare (Publicação social)",
-    ELEVENLABS_API_KEY:  "ElevenLabs (Clonagem de voz)",
-    HEYGEN_API_KEY:      "HeyGen (Avatar)",
-    PEXELS_API_KEY:      "Pexels (B-roll)",
-    NXS_API_KEY:         "NXS / LLM (Roteiro)",
-    REPLICATE_API_TOKEN: "Replicate (SadTalker)",
+    AYRSHARE_API_KEY:    "Ayrshare — Publicação social",
+    ELEVENLABS_API_KEY:  "ElevenLabs — Clonagem de voz",
+    HEYGEN_API_KEY:      "HeyGen — Avatar (lip-sync)",
+    PEXELS_API_KEY:      "Pexels — B-roll automático",
+    NXS_API_KEY:         "NXS / LLM — Geração de roteiro",
+    REPLICATE_API_TOKEN: "Replicate — SadTalker avatar",
   };
   const label = labels[envKey] || envKey;
-  const val = prompt(`Chave para ${label}\n\nDeixe vazio para remover:`, "");
-  if (val === null) return; // cancelou
-  const r = await api.post("/api/settings/integrations", { key: envKey, value: val.trim() });
+  openModal(`
+    <h2 style="margin-bottom:6px">Chave de API</h2>
+    <p class="muted" style="font-size:13px;margin-bottom:18px">${label}</p>
+    <div class="field">
+      <label>Valor da chave</label>
+      <input id="apikey_input" type="password" placeholder="Cole a chave aqui…" autocomplete="off"
+             style="font-family:monospace;letter-spacing:.04em"
+             onkeydown="if(event.key==='Enter')saveApiKeyModal('${envKey}')">
+      <div style="display:flex;align-items:center;gap:6px;margin-top:6px">
+        <input type="checkbox" id="apikey_show" onchange="toggleApiKeyVisible()" style="width:auto;margin:0">
+        <label for="apikey_show" style="font-size:12px;margin:0;cursor:pointer">Mostrar chave</label>
+      </div>
+    </div>
+    <p class="muted" style="font-size:12px;margin-bottom:18px">Deixe vazio e salve para remover a chave.</p>
+    <div class="row">
+      <button class="btn primary" onclick="saveApiKeyModal('${envKey}')">Salvar</button>
+      <button class="btn ghost" onclick="closeModal()">Cancelar</button>
+    </div>`);
+  setTimeout(() => $("apikey_input")?.focus(), 80);
+}
+
+function toggleApiKeyVisible() {
+  const inp = $("apikey_input");
+  if (inp) inp.type = $("apikey_show").checked ? "text" : "password";
+}
+
+async function saveApiKeyModal(envKey) {
+  const val = ($("apikey_input")?.value || "").trim();
+  const r = await api.post("/api/settings/integrations", { key: envKey, value: val });
   if (r.ok) {
-    toast(val.trim() ? "Chave salva! Recarregue a página para ver o status atualizado." : "Chave removida.");
-    // Atualiza integrations do STATE para refletir nova config
+    closeModal();
+    toast(val ? "Chave salva com sucesso." : "Chave removida.");
     const st = await api.get("/api/status");
-    if (st.integrations) { STATE.status.integrations = st.integrations; }
+    if (st.integrations) STATE.status.integrations = st.integrations;
     viewSettings();
   } else {
     toast(r.error || "Erro ao salvar", "err");
@@ -1060,6 +1086,7 @@ window.startTutorial = startTutorial; window.tutNext = tutNext; window.tutPrev =
 window.fbAuth = fbAuth; window.recheckApproval = recheckApproval;
 window.connectSocial = connectSocial; window.openAyrshareConnect = openAyrshareConnect;
 window.loadSocialStatus = loadSocialStatus; window.editApiKey = editApiKey;
+window.saveApiKeyModal = saveApiKeyModal; window.toggleApiKeyVisible = toggleApiKeyVisible;
 window.toggleStep = toggleStep;
 window.uploadProfilePhoto = uploadProfilePhoto; window.uploadProfileVoice = uploadProfileVoice;
 window.testVoice = testVoice; window.generateTestVideo = generateTestVideo;
