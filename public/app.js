@@ -868,52 +868,62 @@ async function connectSocial(platform, btnEl) {
 async function openAyrshareConnect(platform, btnEl) {
   if (btnEl) { btnEl.disabled = true; btnEl.innerHTML = '<span class="spinner"></span>'; }
   try {
-    // Garante que o perfil Ayrshare existe para este usuário
-    await aiApi.post("/api/social/profile", {});
-    // Obtém a URL JWT autenticada — carrega direto a página de conectar redes
-    const r = await aiApi.get("/api/social/connect-url");
-    if (!r.url) { toast("Não foi possível gerar o link de autenticação.", "err"); return; }
+    // Tenta obter URL JWT autenticada (abre direto na conta do usuário)
+    let connectUrl = "https://app.ayrshare.com/social-accounts"; // fallback público
+    try {
+      await aiApi.post("/api/social/profile", {});
+      const r = await aiApi.get("/api/social/connect-url");
+      if (r.url) connectUrl = r.url;
+    } catch (_) { /* usa fallback */ }
 
-    // Abre popup centralizado com a página do Ayrshare
-    const pw = 900, ph = 680;
-    const left = Math.max(0, (screen.width - pw) / 2);
-    const top = Math.max(0, (screen.height - ph) / 2);
-    const popup = window.open(r.url, "ayrshare_connect",
-      `width=${pw},height=${ph},left=${left},top=${top},toolbar=0,menubar=0,location=0,status=0,scrollbars=1,resizable=1`);
-
-    if (!popup) {
-      toast("Popup bloqueado pelo navegador — libere popups para este site.", "err");
-      return;
-    }
-
-    // Mostra overlay no app enquanto o popup está aberto
-    openModal(`
-      <div style="text-align:center;padding:12px 0">
-        <span class="material-icons-round" style="font-size:40px;color:var(--accent);margin-bottom:12px">open_in_new</span>
-        <h2 style="margin-bottom:6px">Conectando redes sociais</h2>
-        <p class="muted" style="font-size:13px;margin-bottom:20px">
-          Uma janela foi aberta para você autenticar sua conta.<br>
-          Após conectar, feche a janela — o status atualiza automaticamente.
-        </p>
-        <div id="social_connect_status" style="min-height:24px"></div>
-        <button class="btn ghost" style="margin-top:16px" onclick="closeModal()">Fechar este aviso</button>
-      </div>`);
-
-    // Polling: detecta quando o popup fecha e recarrega o status
-    const poll = setInterval(async () => {
-      if (popup.closed) {
-        clearInterval(poll);
-        closeModal();
-        toast("Verificando conexões...");
-        await loadSocialStatus();
-      }
-    }, 800);
-
+    openSocialPopup(connectUrl);
   } catch (e) {
-    toast("Erro ao gerar link de autenticação.", "err");
+    toast("Erro ao abrir autenticação social.", "err");
   } finally {
     if (btnEl) { btnEl.disabled = false; btnEl.innerHTML = '<span class="material-icons-round" style="font-size:15px">add_link</span> Conectar'; }
   }
+}
+
+function openSocialPopup(url) {
+  const pw = 920, ph = 700;
+  const left = Math.max(0, Math.round((screen.width - pw) / 2));
+  const top  = Math.max(0, Math.round((screen.height - ph) / 2));
+  const popup = window.open(url, "ayrshare_connect",
+    `width=${pw},height=${ph},left=${left},top=${top},toolbar=0,menubar=0,location=1,status=0,scrollbars=1,resizable=1`);
+
+  if (!popup) {
+    // Popup bloqueado: abre em nova aba como última alternativa
+    window.open(url, "_blank");
+    toast("Após conectar suas redes, clique em Atualizar na seção social.", "warn");
+    return;
+  }
+
+  openModal(`
+    <div style="text-align:center;padding:8px 0 4px">
+      <div style="width:48px;height:48px;border-radius:50%;background:var(--accent-dim);display:flex;align-items:center;justify-content:center;margin:0 auto 14px">
+        <span class="material-icons-round" style="font-size:26px;color:var(--accent)">link</span>
+      </div>
+      <h2 style="margin-bottom:6px">Conectar redes sociais</h2>
+      <p class="muted" style="font-size:13px;line-height:1.6;margin-bottom:20px">
+        Uma janela foi aberta com a página de autenticação.<br>
+        Conecte as redes desejadas e feche a janela quando terminar.
+      </p>
+      <div id="social_popup_indicator" style="display:flex;align-items:center;justify-content:center;gap:8px;font-size:13px;color:var(--muted)">
+        <span class="spinner" style="width:14px;height:14px"></span> Aguardando...
+      </div>
+      <div style="display:flex;gap:8px;justify-content:center;margin-top:20px">
+        <button class="btn ghost" onclick="window.open('${url}','ayrshare_connect','width=920,height=700')">Reabrir janela</button>
+        <button class="btn ghost" onclick="closeModal()">Fechar aviso</button>
+      </div>
+    </div>`);
+
+  const poll = setInterval(async () => {
+    if (!popup.closed) return;
+    clearInterval(poll);
+    closeModal();
+    toast("Atualizando conexões...");
+    await loadSocialStatus();
+  }, 600);
 }
 
 // ============================ PERFIL DE IA ============================
@@ -1222,7 +1232,7 @@ window.produceVideo = produceVideo; window.genPlan = genPlan; window.generateAva
 window.openPublish = openPublish; window.doPublish = doPublish; window.refreshAllPosts = refreshAllPosts;
 window.startTutorial = startTutorial; window.tutNext = tutNext; window.tutPrev = tutPrev; window.tutEnd = tutEnd;
 window.fbAuth = fbAuth; window.recheckApproval = recheckApproval;
-window.connectSocial = connectSocial; window.openAyrshareConnect = openAyrshareConnect;
+window.connectSocial = connectSocial; window.openAyrshareConnect = openAyrshareConnect; window.openSocialPopup = openSocialPopup;
 window.loadSocialStatus = loadSocialStatus; window.editApiKey = editApiKey;
 window.saveApiKeyModal = saveApiKeyModal; window.toggleApiKeyVisible = toggleApiKeyVisible; window.updateFileName = updateFileName;
 window.toggleStep = toggleStep;
