@@ -92,6 +92,24 @@ app.use(express.json({ limit: "5mb" }));
 app.use("/uploads", express.static(UPLOAD_DIR));
 app.use(express.static(path.join(__dirname, "public")));
 
+// CORS — permite que o frontend no Render chame as rotas de IA aqui no servidor local.
+const ALLOWED_ORIGINS = [
+  "https://verzius-backend.onrender.com",
+  "http://localhost:4000",
+  "http://localhost:3000",
+];
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization");
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+  }
+  if (req.method === "OPTIONS") return res.sendStatus(204);
+  next();
+});
+
 // --- helper de resposta ---
 const ok = (res, data) => res.json({ ok: true, ...data });
 const fail = (res, err, code = 500) =>
@@ -323,7 +341,7 @@ app.post("/api/clients/:id/photo", upload.single("photo"), async (req, res) => {
     if (ext && !fname.endsWith(ext)) {
       try { fs.renameSync(path.join(UPLOAD_DIR, fname), path.join(UPLOAD_DIR, fname + ext)); fname += ext; } catch {}
     }
-    const photoUrl = `/uploads/${fname}`;
+    const photoUrl = publicBase() ? `${publicBase()}/uploads/${fname}` : `/uploads/${fname}`;
     const result = await registerAvatar({ name: client.name, photoUrl });
     const updated = db.update("clients", client.id, {
       photoUrl,
@@ -399,7 +417,7 @@ app.post("/api/profile/photo", upload.single("photo"), async (req, res) => {
     if (ext && !fname.endsWith(ext)) {
       try { fs.renameSync(path.join(UPLOAD_DIR, fname), path.join(UPLOAD_DIR, fname + ext)); fname += ext; } catch {}
     }
-    const photoUrl = `/uploads/${fname}`;
+    const photoUrl = publicBase() ? `${publicBase()}/uploads/${fname}` : `/uploads/${fname}`;
     const result = await registerAvatar({ name: profile.name, photoUrl });
     const updated = db.update("clients", profile.id, {
       photoUrl,

@@ -4,12 +4,21 @@ let AUTH_TOKEN = "";  // token do Firebase (tem prioridade quando logado via Fir
 const getToken = () => localStorage.getItem(TOKEN_KEY) || "";
 const setToken = (t) => t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY);
 const authHeaders = (extra = {}) => { const t = AUTH_TOKEN || getToken(); return t ? { ...extra, Authorization: `Bearer ${t}` } : extra; };
+// Backend de dados (Render) — CRUD, auth, configurações.
 const api = {
   async get(p) { return (await fetch(p, { headers: authHeaders() })).json(); },
   async post(p, body) { return (await fetch(p, { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify(body) })).json(); },
   async put(p, body) { return (await fetch(p, { method: "PUT", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify(body) })).json(); },
   async del(p) { return (await fetch(p, { method: "DELETE", headers: authHeaders() })).json(); },
   async upload(p, formData) { return (await fetch(p, { method: "POST", headers: authHeaders(), body: formData })).json(); },
+};
+
+// Backend de IA (servidor local via Cloudflare Tunnel) — geração de conteúdo, voz, avatar.
+const AI_BASE = "https://verzius-api.nexusholding.xyz";
+const aiApi = {
+  async get(p) { return (await fetch(AI_BASE + p, { headers: authHeaders() })).json(); },
+  async post(p, body) { return (await fetch(AI_BASE + p, { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify(body) })).json(); },
+  async upload(p, formData) { return (await fetch(AI_BASE + p, { method: "POST", headers: authHeaders(), body: formData })).json(); },
 };
 
 let STATE = { status: null, clients: [], currentView: "dashboard" };
@@ -154,12 +163,19 @@ function showApp() {
   document.querySelectorAll(".sidebar nav a").forEach(a => {
     a.onclick = () => navigate(a.dataset.view);
   });
-  navigate("dashboard");
+  // rota por hash: restaura a view da URL ou vai para dashboard
+  window.addEventListener("popstate", () => {
+    const v = location.hash.slice(1);
+    if (v) navigate(v);
+  });
+  const initView = location.hash.slice(1) || "dashboard";
+  navigate(initView);
   // primeira visita: abre o tutorial guiado automaticamente
   if (!localStorage.getItem("verzius_tut_seen")) setTimeout(startTutorial, 700);
 }
 function navigate(view) {
   STATE.currentView = view;
+  if (location.hash !== `#${view}`) history.pushState(null, "", `#${view}`);
   document.querySelectorAll(".sidebar nav a").forEach(a => a.classList.toggle("active", a.dataset.view === view));
   const fn = { dashboard: viewDashboard, clients: viewClients, studio: viewStudio, videos: viewVideos, posts: viewPosts, calendar: viewCalendar, admin: viewAdmin, settings: viewSettings, profile: viewProfile }[view];
   if (fn) fn();
@@ -174,28 +190,34 @@ async function viewDashboard() {
   STATE.clients = clients;
   const totalViews = totals?.views || 0;
   $("view").innerHTML = `
-    <h1>Dashboard</h1>
-    <p class="page-sub">Visão geral da sua agência de conteúdo com IA.</p>
-    <div class="grid cols-4">
-      <div class="card stat"><div class="num brand">${clients.length}</div><div class="lbl">Clientes ativos</div></div>
-      <div class="card stat"><div class="num">${videos.length}</div><div class="lbl">Vídeos gerados</div></div>
-      <div class="card stat"><div class="num">${scripts.length}</div><div class="lbl">Roteiros salvos</div></div>
-      <div class="card stat"><div class="num">${totalViews.toLocaleString("pt-BR")}</div><div class="lbl">Views (registradas)</div></div>
-    </div>
-    <div class="grid cols-2" style="margin-top:24px">
-      <div class="card">
-        <div class="row between"><h2>Clientes recentes</h2><button class="btn sm" onclick="navigate('clients')">Ver todos</button></div>
-        <div id="dashClients">${clients.length ? "" : '<p class="empty">Nenhum cliente ainda. Cadastre o primeiro!</p>'}</div>
+    <div class="view-wrap">
+      <div class="view-head">
+        <h1>Dashboard</h1>
+        <p class="page-sub">Visão geral da sua agência de conteúdo com IA.</p>
+        <div class="grid cols-4" style="margin-bottom:20px">
+          <div class="card stat"><div class="num brand">${clients.length}</div><div class="lbl">Clientes ativos</div></div>
+          <div class="card stat"><div class="num">${videos.length}</div><div class="lbl">Vídeos gerados</div></div>
+          <div class="card stat"><div class="num">${scripts.length}</div><div class="lbl">Roteiros salvos</div></div>
+          <div class="card stat"><div class="num">${totalViews.toLocaleString("pt-BR")}</div><div class="lbl">Views (registradas)</div></div>
+        </div>
       </div>
-      <div class="card">
-        <h2>⚡ Começo rápido</h2>
-        <ol style="line-height:2;color:#cfd3e0;padding-left:18px;font-size:14px">
-          <li>Cadastre um cliente (nicho + tom de voz)</li>
-          <li>Suba a foto (avatar) e o áudio (voz)</li>
-          <li>Gere roteiros virais no Estúdio</li>
-          <li>Produza o vídeo e poste o plano de 60 dias</li>
-        </ol>
-        <button class="btn primary" style="margin-top:10px" onclick="openClientForm()">+ Novo cliente</button>
+      <div class="view-body">
+        <div class="grid cols-2">
+          <div class="card">
+            <div class="row between"><h2>Clientes recentes</h2><button class="btn sm" onclick="navigate('clients')">Ver todos</button></div>
+            <div id="dashClients">${clients.length ? "" : '<p class="empty">Nenhum cliente ainda. Cadastre o primeiro!</p>'}</div>
+          </div>
+          <div class="card">
+            <h2>⚡ Começo rápido</h2>
+            <ol style="line-height:2;color:#cfd3e0;padding-left:18px;font-size:14px">
+              <li>Cadastre um cliente (nicho + tom de voz)</li>
+              <li>Suba a foto (avatar) e o áudio (voz)</li>
+              <li>Gere roteiros virais no Estúdio</li>
+              <li>Produza o vídeo e poste o plano de 60 dias</li>
+            </ol>
+            <button class="btn primary" style="margin-top:10px" onclick="openClientForm()">+ Novo cliente</button>
+          </div>
+        </div>
       </div>
     </div>`;
   const box = $("dashClients");
@@ -207,9 +229,17 @@ async function viewClients() {
   const { clients } = await api.get("/api/clients");
   STATE.clients = clients;
   $("view").innerHTML = `
-    <div class="row between"><div><h1>Clientes</h1><p class="page-sub">Cada cliente tem seu avatar, voz e estilo de conteúdo.</p></div>
-    <button class="btn primary" onclick="openClientForm()">+ Novo cliente</button></div>
-    <div id="clientsList">${clients.length ? "" : '<p class="empty">Nenhum cliente cadastrado.</p>'}</div>`;
+    <div class="view-wrap">
+      <div class="view-head">
+        <div class="row between">
+          <div><h1>Clientes</h1><p class="page-sub">Cada cliente tem seu avatar, voz e estilo de conteúdo.</p></div>
+          <button class="btn primary" onclick="openClientForm()">+ Novo cliente</button>
+        </div>
+      </div>
+      <div class="view-body">
+        <div id="clientsList">${clients.length ? "" : '<p class="empty">Nenhum cliente cadastrado.</p>'}</div>
+      </div>
+    </div>`;
   const list = $("clientsList");
   clients.forEach(c => list.appendChild(clientRow(c, true)));
 }
@@ -272,15 +302,27 @@ async function openClient(id) {
       <div><h2 style="margin:0">${c.name}</h2><span class="tag brand">${nicheLabel(c.niche)}</span></div>
     </div>
     <div class="card" style="margin-bottom:12px">
-      <label>📸 Foto do avatar (HeyGen) — sorrindo, ângulo frontal, sem boné</label>
-      <input type="file" id="up_photo" accept="image/*" style="margin:8px 0">
-      <button class="btn sm" onclick="uploadPhoto('${c.id}')">Enviar foto</button>
+      <label style="margin-bottom:10px">📸 Foto do avatar (HeyGen) — sorrindo, ângulo frontal, sem boné</label>
+      <div class="row" style="flex-wrap:nowrap">
+        <label class="file-btn" onclick="void(0)">
+          <span class="material-icons-round" style="font-size:15px">image</span>
+          <span class="file-name" id="up_photo_name">Escolher foto</span>
+          <input type="file" class="file-input-hidden" id="up_photo" accept="image/*" onchange="updateFileName('up_photo','up_photo_name')">
+        </label>
+        <button class="btn sm primary" onclick="uploadPhoto('${c.id}')">Enviar</button>
+      </div>
       ${c.avatarNote ? `<p class="muted" style="font-size:12px;margin-top:8px">${c.avatarNote}</p>` : ""}
     </div>
     <div class="card" style="margin-bottom:12px">
-      <label>🎙️ Áudio da voz (ElevenLabs) — 1 a 5 min falando naturalmente</label>
-      <input type="file" id="up_voice" accept="audio/*" multiple style="margin:8px 0">
-      <button class="btn sm" onclick="uploadVoice('${c.id}')">Enviar áudio</button>
+      <label style="margin-bottom:10px">🎙️ Áudio da voz (ElevenLabs) — 1 a 5 min falando naturalmente</label>
+      <div class="row" style="flex-wrap:nowrap">
+        <label class="file-btn" onclick="void(0)">
+          <span class="material-icons-round" style="font-size:15px">graphic_eq</span>
+          <span class="file-name" id="up_voice_name">Escolher áudio</span>
+          <input type="file" class="file-input-hidden" id="up_voice" accept="audio/*" multiple onchange="updateFileName('up_voice','up_voice_name')">
+        </label>
+        <button class="btn sm primary" onclick="uploadVoice('${c.id}')">Enviar</button>
+      </div>
     </div>
     <div class="field"><label>avatar_id (HeyGen) — cole se já tiver criado no painel</label>
       <input id="f_avatarId" value="${c.avatarId || ""}" placeholder="ex: Daisy-inskirt-20220818">
@@ -299,7 +341,7 @@ async function uploadPhoto(id) {
   if (!f) return toast("Selecione uma imagem", "err");
   const fd = new FormData(); fd.append("photo", f);
   toast("Enviando...");
-  const r = await api.upload(`/api/clients/${id}/photo`, fd);
+  const r = await aiApi.upload(`/api/clients/${id}/photo`, fd);
   if (r.ok) { toast(r.integration?.demo ? "Foto salva (demo)" : "Avatar registrado"); openClient(id); }
   else toast(r.error || "Erro", "err");
 }
@@ -308,7 +350,7 @@ async function uploadVoice(id) {
   if (!files.length) return toast("Selecione o áudio", "err");
   const fd = new FormData(); [...files].forEach(f => fd.append("samples", f));
   toast("Clonando voz...");
-  const r = await api.upload(`/api/clients/${id}/voice`, fd);
+  const r = await aiApi.upload(`/api/clients/${id}/voice`, fd);
   if (r.ok) { toast(r.integration?.demo ? "Voz salva (demo)" : "Voz clonada"); openClient(id); }
   else toast(r.error || "Erro", "err");
 }
@@ -331,17 +373,23 @@ async function viewStudio() {
   const opts = `<option value="">— sem cliente (genérico) —</option>` +
     clients.map(c => `<option value="${c.id}" ${STUDIO.clientId === c.id ? "selected" : ""}>${c.name} · ${nicheLabel(c.niche)}</option>`).join("");
   $("view").innerHTML = `
-    <h1>✍️ Estúdio de Roteiro</h1>
-    <p class="page-sub">O motor de viralização gera roteiros prontos para o avatar ler. Sem trends, foco em autoridade.</p>
-    <div class="card">
-      <div class="grid cols-2">
-        <div class="field"><label>Cliente</label><select id="st_client">${opts}</select></div>
-        <div class="field"><label>Variações</label><select id="st_count"><option>3</option><option>5</option><option>1</option></select></div>
+    <div class="view-wrap">
+      <div class="view-head">
+        <h1>✍️ Estúdio de Roteiro</h1>
+        <p class="page-sub">O motor de viralização gera roteiros prontos para o avatar ler. Sem trends, foco em autoridade.</p>
+        <div class="card" style="margin-bottom:16px">
+          <div class="grid cols-2">
+            <div class="field"><label>Cliente</label><select id="st_client">${opts}</select></div>
+            <div class="field"><label>Variações</label><select id="st_count"><option>3</option><option>5</option><option>1</option></select></div>
+          </div>
+          <div class="field"><label>Tema do vídeo *</label><input id="st_theme" placeholder="ex: erros que destroem o sono / como economizar imposto legalmente" value="${STUDIO.theme}"></div>
+          <button class="btn primary" id="genBtn" onclick="generateScripts()">Gerar roteiros virais</button>
+        </div>
       </div>
-      <div class="field"><label>Tema do vídeo *</label><input id="st_theme" placeholder="ex: erros que destroem o sono / como economizar imposto legalmente" value="${STUDIO.theme}"></div>
-      <button class="btn primary" id="genBtn" onclick="generateScripts()">Gerar roteiros virais</button>
-    </div>
-    <div id="variations" style="margin-top:22px"></div>`;
+      <div class="view-body">
+        <div id="variations"></div>
+      </div>
+    </div>`;
   if (STUDIO.variations.length) renderVariations();
 }
 
@@ -350,7 +398,7 @@ async function generateScripts() {
   if (!theme) return toast("Informe o tema", "err");
   const btn = $("genBtn"); btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Gerando...';
   STUDIO.clientId = $("st_client").value; STUDIO.theme = theme;
-  const r = await api.post("/api/scripts/generate", { clientId: STUDIO.clientId || null, theme, count: Number($("st_count").value), niche: STATE.clients.find(c => c.id === STUDIO.clientId)?.niche });
+  const r = await aiApi.post("/api/scripts/generate", { clientId: STUDIO.clientId || null, theme, count: Number($("st_count").value), niche: STATE.clients.find(c => c.id === STUDIO.clientId)?.niche });
   btn.disabled = false; btn.textContent = "Gerar roteiros virais";
   if (r.ok) { STUDIO.variations = r.variations || []; renderVariations(); if (r.warning) toast("API falhou, usando demo", "err"); }
   else toast(r.error || "Erro", "err");
@@ -400,20 +448,26 @@ async function viewVideos() {
   const cphoto = (id) => clients.find(c => c.id === id)?.photoUrl;
   const avatarOn = STATE.status.integrations.avatar?.provider && STATE.status.integrations.avatar.provider !== "none";
   $("view").innerHTML = `
-    <h1>🎬 Vídeos</h1>
-    <p class="page-sub">Produza vídeos com avatar a partir dos roteiros salvos.</p>
-    <div class="card" style="margin-bottom:22px">
-      <h2>Produzir novo vídeo</h2>
-      <div class="grid cols-2">
-        <div class="field"><label>Roteiro salvo</label><select id="v_script">
-          ${scripts.length ? scripts.map(s => `<option value="${s.id}|${s.clientId || ""}">${(s.hook || s.theme || "roteiro").slice(0, 50)}… · ${cname(s.clientId)}</option>`).join("") : "<option value=''>Nenhum roteiro salvo</option>"}
-        </select></div>
-        <div class="field" style="display:flex;align-items:flex-end"><button class="btn primary" onclick="produceVideo()" ${scripts.length ? "" : "disabled"}>▶ Gerar vídeo</button></div>
+    <div class="view-wrap">
+      <div class="view-head">
+        <h1>🎬 Vídeos</h1>
+        <p class="page-sub">Produza vídeos com avatar a partir dos roteiros salvos.</p>
+        <div class="card" style="margin-bottom:16px">
+          <h2>Produzir novo vídeo</h2>
+          <div class="grid cols-2">
+            <div class="field"><label>Roteiro salvo</label><select id="v_script">
+              ${scripts.length ? scripts.map(s => `<option value="${s.id}|${s.clientId || ""}">${(s.hook || s.theme || "roteiro").slice(0, 50)}… · ${cname(s.clientId)}</option>`).join("") : "<option value=''>Nenhum roteiro salvo</option>"}
+            </select></div>
+            <div class="field" style="display:flex;align-items:flex-end"><button class="btn primary" onclick="produceVideo()" ${scripts.length ? "" : "disabled"}>▶ Gerar vídeo</button></div>
+          </div>
+          <p class="muted" style="font-size:12px">${STATE.status.integrations.avatar.configured ? "HeyGen conectado (avatar falante)." : STATE.status.integrations.voice.configured ? "Sem avatar: o vídeo final é gerado com <b>voz real (ElevenLabs)</b> + legendas/B-roll na edição." : "Modo demo: vídeo simulado. Conecte ElevenLabs (voz) ou HeyGen (avatar) para produzir de verdade."}</p>
+        </div>
       </div>
-      <p class="muted" style="font-size:12px">${STATE.status.integrations.avatar.configured ? "HeyGen conectado (avatar falante)." : STATE.status.integrations.voice.configured ? "Sem avatar: o vídeo final é gerado com <b>voz real (ElevenLabs)</b> + legendas/B-roll na edição." : "Modo demo: vídeo simulado. Conecte ElevenLabs (voz) ou HeyGen (avatar) para produzir de verdade."}</p>
-    </div>
-    <h2>Histórico</h2>
-    <div id="videosList">${videos.length ? "" : '<p class="empty">Nenhum vídeo ainda.</p>'}</div>`;
+      <div class="view-body">
+        <h2>Histórico</h2>
+        <div id="videosList">${videos.length ? "" : '<p class="empty">Nenhum vídeo ainda.</p>'}</div>
+      </div>
+    </div>`;
   const list = $("videosList");
   videos.forEach(v => {
     const statusTag = v.status === "completed" || v.status === "edited" ? "green" : v.status === "failed" ? "amber" : "brand";
@@ -440,7 +494,7 @@ async function viewVideos() {
     const eb = node.querySelector("[data-edit]");
     if (eb) eb.onclick = async () => {
       eb.disabled = true; eb.innerHTML = '<span class="spinner"></span> Editando...';
-      const r = await api.post(`/api/videos/${v.id}/edit`, {});
+      const r = await aiApi.post(`/api/videos/${v.id}/edit`, {});
       if (r.ok) { toast(`Edição pronta (${r.edit.segments} legendas, ${r.edit.durationSec}s${r.edit.narrated ? ", com voz 🎙️" : ""})`); viewVideos(); }
       else { toast(r.error || "Erro na edição", "err"); eb.disabled = false; eb.textContent = "✂️ Gerar edição"; }
     };
@@ -454,7 +508,7 @@ async function produceVideo() {
   const [scriptId, clientId] = val.split("|");
   if (!clientId) return toast("Este roteiro não tem cliente. Gere com um cliente selecionado.", "err");
   toast("Gerando vídeo...");
-  const r = await api.post("/api/videos/generate", { scriptId, clientId });
+  const r = await aiApi.post("/api/videos/generate", { scriptId, clientId });
   if (r.ok) { toast(r.video.demo ? "Vídeo simulado (demo)" : "Vídeo em produção"); viewVideos(); }
   else toast(r.error || "Erro", "err");
 }
@@ -462,12 +516,12 @@ async function produceVideo() {
 // Gera o avatar falante (SadTalker) de forma assíncrona e faz polling.
 async function generateAvatar(id, btn) {
   btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Iniciando...';
-  const r = await api.post(`/api/videos/${id}/avatar`, {});
+  const r = await aiApi.post(`/api/videos/${id}/avatar`, {});
   if (!r.ok) { toast(r.error || "Erro ao iniciar avatar", "err"); btn.disabled = false; btn.textContent = "🧑 Gerar avatar"; return; }
   toast("Avatar em geração (lip-sync). Isso leva alguns minutos…");
   let tries = 0;
   const poll = async () => {
-    const s = await api.get(`/api/videos/${id}/avatar-status`);
+    const s = await aiApi.get(`/api/videos/${id}/avatar-status`);
     if (s.status === "completed") { toast("Avatar pronto! Agora gere a edição."); viewVideos(); return; }
     if (s.status === "failed") { toast("Falha na geração do avatar.", "err"); btn.disabled = false; btn.textContent = "🧑 Gerar avatar"; return; }
     btn.innerHTML = `<span class="spinner"></span> Gerando… (${++tries})`;
@@ -493,7 +547,7 @@ async function doPublish(videoId) {
   const platform = $("pub_platform").value;
   const caption = $("pub_caption").value.trim();
   const btn = $("pubBtn"); btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Publicando...';
-  const r = await api.post(`/api/videos/${videoId}/publish`, { platform, caption });
+  const r = await aiApi.post(`/api/videos/${videoId}/publish`, { platform, caption });
   if (r.ok) { toast("Publicado! Veja em Publicações."); closeModal(); navigate("posts"); }
   else { toast(r.error || "Erro", "err"); btn.disabled = false; btn.textContent = "Publicar agora"; }
 }
@@ -505,15 +559,23 @@ async function viewPosts() {
   const { posts, totals } = await api.get("/api/posts");
   const cname = (id) => clients.find(c => c.id === id)?.name || "—";
   $("view").innerHTML = `
-    <div class="row between"><div><h1>🚀 Publicações</h1><p class="page-sub">Postagens e métricas de desempenho (views, likes, comentários, shares).</p></div>
-    <button class="btn sm" onclick="refreshAllPosts()">↻ Atualizar métricas</button></div>
-    <div class="grid cols-4" style="margin-bottom:22px">
-      <div class="card stat"><div class="num brand">${fmt(totals.views)}</div><div class="lbl">Views totais</div></div>
-      <div class="card stat"><div class="num">${fmt(totals.likes)}</div><div class="lbl">Likes</div></div>
-      <div class="card stat"><div class="num">${fmt(totals.comments)}</div><div class="lbl">Comentários</div></div>
-      <div class="card stat"><div class="num">${fmt(totals.shares)}</div><div class="lbl">Shares</div></div>
-    </div>
-    <div id="postsList">${posts.length ? "" : '<p class="empty">Nenhuma publicação ainda. Edite um vídeo e clique em 🚀 Publicar.</p>'}</div>`;
+    <div class="view-wrap">
+      <div class="view-head">
+        <div class="row between">
+          <div><h1>🚀 Publicações</h1><p class="page-sub">Postagens e métricas de desempenho (views, likes, comentários, shares).</p></div>
+          <button class="btn sm" onclick="refreshAllPosts()">↻ Atualizar métricas</button>
+        </div>
+        <div class="grid cols-4" style="margin-bottom:16px">
+          <div class="card stat"><div class="num brand">${fmt(totals.views)}</div><div class="lbl">Views totais</div></div>
+          <div class="card stat"><div class="num">${fmt(totals.likes)}</div><div class="lbl">Likes</div></div>
+          <div class="card stat"><div class="num">${fmt(totals.comments)}</div><div class="lbl">Comentários</div></div>
+          <div class="card stat"><div class="num">${fmt(totals.shares)}</div><div class="lbl">Shares</div></div>
+        </div>
+      </div>
+      <div class="view-body">
+        <div id="postsList">${posts.length ? "" : '<p class="empty">Nenhuma publicação ainda. Edite um vídeo e clique em 🚀 Publicar.</p>'}</div>
+      </div>
+    </div>`;
   const list = $("postsList");
   const platLabel = (k) => STATE.status.integrations.publish?.platforms?.[k]?.label || k;
   posts.forEach(p => {
@@ -549,17 +611,21 @@ async function viewCalendar() {
   STATE.clients = clients;
   const opts = clients.map(c => `<option value="${c.id}">${c.name}</option>`).join("");
   $("view").innerHTML = `
-    <h1>📅 Calendário de Conteúdo</h1>
-    <p class="page-sub">Planeje o ritmo (modelo do vídeo: 60 vídeos em 3 meses, seg–sex).</p>
-    <div class="card" style="margin-bottom:22px">
-      <div class="row">
-        <div class="field" style="flex:1;margin:0"><label>Cliente</label><select id="cal_client">${opts || "<option value=''>Cadastre um cliente</option>"}</select></div>
-        <div class="field" style="margin:0"><label>Qtd. vídeos</label><input id="cal_count" type="number" value="60" style="width:90px"></div>
-        <div style="display:flex;align-items:flex-end"><button class="btn primary" onclick="genPlan()" ${clients.length ? "" : "disabled"}>Gerar plano</button></div>
+    <div class="view-wrap">
+      <div class="view-head">
+        <h1>📅 Calendário de Conteúdo</h1>
+        <p class="page-sub">Planeje o ritmo (modelo do vídeo: 60 vídeos em 3 meses, seg–sex).</p>
+        <div class="card" style="margin-bottom:16px">
+          <div class="row">
+            <div class="field" style="flex:1;margin:0"><label>Cliente</label><select id="cal_client">${opts || "<option value=''>Cadastre um cliente</option>"}</select></div>
+            <div class="field" style="margin:0"><label>Qtd. vídeos</label><input id="cal_count" type="number" value="60" style="width:90px"></div>
+            <div style="display:flex;align-items:flex-end"><button class="btn primary" onclick="genPlan()" ${clients.length ? "" : "disabled"}>Gerar plano</button></div>
+          </div>
+        </div>
       </div>
-    </div>
-    <div id="calList"></div>`;
-  loadCalendar();
+      <div class="view-body" id="calList"></div>
+    </div>`;
+  setTimeout(loadCalendar, 0);
 }
 async function loadCalendar() {
   const cid = $("cal_client")?.value;
@@ -623,25 +689,30 @@ async function viewSettings() {
   };
 
   $("view").innerHTML = `
-    <h1>Configurações</h1>
-    <p class="page-sub">Integrações de produção e redes sociais da sua agência.</p>
+    <div class="view-wrap">
+      <div class="view-head">
+        <h1>Configurações</h1>
+        <p class="page-sub">Integrações de produção e redes sociais da sua agência.</p>
+      </div>
+      <div class="view-body">
+        <h2 style="margin-bottom:10px">Chaves de API</h2>
+        <div class="card" style="margin-bottom:24px;padding:16px 20px">
+          <p class="muted" style="font-size:13px;margin-bottom:14px">As chaves são salvas de forma segura no banco de dados do servidor. Nenhum arquivo precisa ser editado manualmente.</p>
+          ${keyCard("AYRSHARE_API_KEY",    "share",         "indigo", "Ayrshare — Publicação social")}
+          ${keyCard("ELEVENLABS_API_KEY",  "mic",           "green",  "ElevenLabs — Clonagem de voz")}
+          ${keyCard("HEYGEN_API_KEY",      "face",          "purple", "HeyGen — Avatar (lip-sync)")}
+          ${keyCard("PEXELS_API_KEY",      "video_library", "teal",   "Pexels — B-roll automático")}
+          ${keyCard("NXS_API_KEY",         "psychology",    "blue",   "NXS / LLM — Geração de roteiro")}
+          ${keyCard("REPLICATE_API_TOKEN", "movie_filter",  "orange", "Replicate — SadTalker avatar")}
+        </div>
 
-    <h2 style="margin-bottom:10px">Chaves de API</h2>
-    <div class="card" style="margin-bottom:16px;padding:16px 20px">
-      <p class="muted" style="font-size:13px;margin-bottom:14px">As chaves são salvas de forma segura no banco de dados do servidor. Nenhum arquivo precisa ser editado manualmente.</p>
-      ${keyCard("AYRSHARE_API_KEY",    "share",         "indigo", "Ayrshare — Publicação social")}
-      ${keyCard("ELEVENLABS_API_KEY",  "mic",           "green",  "ElevenLabs — Clonagem de voz")}
-      ${keyCard("HEYGEN_API_KEY",      "face",          "purple", "HeyGen — Avatar (lip-sync)")}
-      ${keyCard("PEXELS_API_KEY",      "video_library", "teal",   "Pexels — B-roll automático")}
-      ${keyCard("NXS_API_KEY",         "psychology",    "blue",   "NXS / LLM — Geração de roteiro")}
-      ${keyCard("REPLICATE_API_TOKEN", "movie_filter",  "orange", "Replicate — SadTalker avatar")}
-    </div>
-
-    <h2 style="margin:28px 0 10px">Redes sociais</h2>
-    <div id="socialSection">
-      <div class="card" style="text-align:center;padding:32px">
-        <span class="spinner"></span>
-        <div class="muted" style="margin-top:10px;font-size:13px">Verificando conexões…</div>
+        <h2 style="margin-bottom:10px">Redes sociais</h2>
+        <div id="socialSection">
+          <div class="card" style="text-align:center;padding:32px">
+            <span class="spinner"></span>
+            <div class="muted" style="margin-top:10px;font-size:13px">Verificando conexões…</div>
+          </div>
+        </div>
       </div>
     </div>`;
 
@@ -677,6 +748,13 @@ function editApiKey(envKey) {
       <button class="btn ghost" onclick="closeModal()">Cancelar</button>
     </div>`);
   setTimeout(() => $("apikey_input")?.focus(), 80);
+}
+
+function updateFileName(inputId, spanId) {
+  const files = $(inputId)?.files;
+  if (!files?.length) return;
+  const span = $(spanId);
+  if (span) span.textContent = files.length > 1 ? `${files.length} arquivos selecionados` : files[0].name;
 }
 
 function toggleApiKeyVisible() {
@@ -806,8 +884,12 @@ async function viewProfile() {
   const isComplete = hasPhoto && hasVoice;
 
   $("view").innerHTML = `
+    <div class="view-wrap">
+    <div class="view-head">
     <h1>Perfil de IA</h1>
     <p class="page-sub">Configure seu rosto e voz uma vez — gere vídeos com você falando qualquer roteiro.</p>
+    </div>
+    <div class="view-body">
 
     ${isComplete ? `
     <div class="profile-complete-banner">
@@ -840,7 +922,11 @@ async function viewProfile() {
           </p>
           <div class="field">
             <label>Selecione a foto (JPG/PNG)</label>
-            <input type="file" id="prof_photo" accept="image/*">
+            <label class="file-btn" onclick="void(0)">
+              <span class="material-icons-round" style="font-size:16px">image</span>
+              <span class="file-name" id="prof_photo_name">Nenhum arquivo escolhido</span>
+              <input type="file" class="file-input-hidden" id="prof_photo" accept="image/*" onchange="updateFileName('prof_photo','prof_photo_name')">
+            </label>
           </div>
           <button class="btn primary" onclick="uploadProfilePhoto(this)">
             <span class="material-icons-round" style="font-size:16px">upload</span>
@@ -868,7 +954,11 @@ async function viewProfile() {
           </p>
           <div class="field">
             <label>Arquivo(s) de áudio (MP3/WAV/M4A)</label>
-            <input type="file" id="prof_voice" accept="audio/*" multiple>
+            <label class="file-btn" onclick="void(0)">
+              <span class="material-icons-round" style="font-size:16px">graphic_eq</span>
+              <span class="file-name" id="prof_voice_name">Nenhum arquivo escolhido</span>
+              <input type="file" class="file-input-hidden" id="prof_voice" accept="audio/*" multiple onchange="updateFileName('prof_voice','prof_voice_name')">
+            </label>
           </div>
           <button class="btn primary" onclick="uploadProfileVoice(this)">
             <span class="material-icons-round" style="font-size:16px">graphic_eq</span>
@@ -912,7 +1002,8 @@ async function viewProfile() {
           </button>`}
         </div>
       </div>
-    </div>`;
+    </div>
+    </div></div>`;
 }
 
 function toggleStep(id) {
@@ -927,7 +1018,7 @@ async function uploadProfilePhoto(btn) {
   if (!f) return toast("Selecione uma imagem", "err");
   const fd = new FormData(); fd.append("photo", f);
   btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Enviando...';
-  const r = await api.upload("/api/profile/photo", fd);
+  const r = await aiApi.upload("/api/profile/photo", fd);
   btn.disabled = false;
   if (r.ok) { toast("Foto salva! Seu avatar está pronto."); viewProfile(); }
   else toast(r.error || "Erro ao enviar foto", "err");
@@ -939,7 +1030,7 @@ async function uploadProfileVoice(btn) {
   const fd = new FormData();
   [...files].forEach(f => fd.append("samples", f));
   btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Clonando voz...';
-  const r = await api.upload("/api/profile/voice", fd);
+  const r = await aiApi.upload("/api/profile/voice", fd);
   btn.disabled = false;
   if (r.ok) { toast("Voz clonada com sucesso!"); viewProfile(); }
   else toast(r.error || "Erro ao clonar voz", "err");
@@ -948,7 +1039,7 @@ async function uploadProfileVoice(btn) {
 async function testVoice() {
   const out = $("voiceTestOut");
   out.innerHTML = '<span class="spinner"></span>';
-  const r = await api.post("/api/profile/voice-test", { text: "Olá! Esta é minha voz clonada pela inteligência artificial. Ficou parecida?" });
+  const r = await aiApi.post("/api/profile/voice-test", { text: "Olá! Esta é minha voz clonada pela inteligência artificial. Ficou parecida?" });
   if (r.ok && r.audioUrl) {
     out.innerHTML = `<audio controls style="width:100%;margin-top:8px" src="${r.audioUrl}"></audio>`;
   } else {
@@ -962,7 +1053,7 @@ async function generateTestVideo(btn) {
   btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Gerando roteiro e vídeo...';
   const out = $("testVideoResult");
   out.innerHTML = "";
-  const r = await api.post("/api/profile/test-video", { theme });
+  const r = await aiApi.post("/api/profile/test-video", { theme });
   btn.disabled = false;
   btn.innerHTML = '<span class="material-icons-round" style="font-size:16px">auto_awesome</span> Gerar vídeo de teste';
   if (r.ok) {
@@ -980,14 +1071,20 @@ async function generateTestVideo(btn) {
 
 // ============================ ADMIN — APROVAÇÕES ============================
 async function viewAdmin() {
-  if (!STATE.fbUser?.isAdmin) { $("view").innerHTML = '<h1>🛡️ Aprovações</h1><p class="empty">Acesso restrito ao administrador.</p>'; return; }
+  if (!STATE.fbUser?.isAdmin) { $("view").innerHTML = '<div class="view-wrap"><div class="view-head"><h1>🛡️ Aprovações</h1></div><div class="view-body"><p class="empty">Acesso restrito ao administrador.</p></div></div>'; return; }
   const r = await api.get("/api/admin/users");
   const users = r.users || [];
   const pend = users.filter(u => !u.approved).length;
   $("view").innerHTML = `
-    <h1>🛡️ Aprovações de acesso</h1>
-    <p class="page-sub">Aprove ou revogue o acesso de cada conta registrada no Firebase. ${pend ? `<b style="color:var(--amber)">${pend} pendente(s)</b>` : "Tudo em dia."}</p>
-    <div id="adminList">${users.length ? "" : '<p class="empty">Nenhum usuário registrado ainda.</p>'}</div>`;
+    <div class="view-wrap">
+      <div class="view-head">
+        <h1>🛡️ Aprovações de acesso</h1>
+        <p class="page-sub">Aprove ou revogue o acesso de cada conta registrada no Firebase. ${pend ? `<b style="color:var(--amber)">${pend} pendente(s)</b>` : "Tudo em dia."}</p>
+      </div>
+      <div class="view-body">
+        <div id="adminList">${users.length ? "" : '<p class="empty">Nenhum usuário registrado ainda.</p>'}</div>
+      </div>
+    </div>`;
   const list = $("adminList");
   users.forEach(u => {
     const node = el(`
@@ -1086,7 +1183,7 @@ window.startTutorial = startTutorial; window.tutNext = tutNext; window.tutPrev =
 window.fbAuth = fbAuth; window.recheckApproval = recheckApproval;
 window.connectSocial = connectSocial; window.openAyrshareConnect = openAyrshareConnect;
 window.loadSocialStatus = loadSocialStatus; window.editApiKey = editApiKey;
-window.saveApiKeyModal = saveApiKeyModal; window.toggleApiKeyVisible = toggleApiKeyVisible;
+window.saveApiKeyModal = saveApiKeyModal; window.toggleApiKeyVisible = toggleApiKeyVisible; window.updateFileName = updateFileName;
 window.toggleStep = toggleStep;
 window.uploadProfilePhoto = uploadProfilePhoto; window.uploadProfileVoice = uploadProfileVoice;
 window.testVoice = testVoice; window.generateTestVideo = generateTestVideo;
