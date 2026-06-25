@@ -859,7 +859,6 @@ async function connectSocial(platform, btnEl) {
   const r = await api.get("/api/social/status");
   if (!r.configured) {
     toast("Configure a chave Ayrshare em Chaves de API antes de conectar.", "err");
-    // Rola a página até a seção de chaves
     document.querySelector("#kcard_AYRSHARE_API_KEY")?.scrollIntoView({ behavior: "smooth", block: "center" });
     return;
   }
@@ -867,12 +866,54 @@ async function connectSocial(platform, btnEl) {
 }
 
 async function openAyrshareConnect(platform, btnEl) {
-  // Abre o dashboard Ayrshare onde o usuário conecta as redes sociais.
-  // Funciona com qualquer plano Ayrshare (sem JWT / Business plan).
-  window.open("https://app.ayrshare.com/dashboard/social-networks", "_blank", "width=1100,height=720");
-  toast("Conecte suas redes no Ayrshare e clique em Atualizar aqui quando pronto.");
-  // Aguarda 8s e atualiza automaticamente o status
-  setTimeout(() => loadSocialStatus(), 8000);
+  if (btnEl) { btnEl.disabled = true; btnEl.innerHTML = '<span class="spinner"></span>'; }
+  try {
+    // Garante que o perfil Ayrshare existe para este usuário
+    await aiApi.post("/api/social/profile", {});
+    // Obtém a URL JWT autenticada — carrega direto a página de conectar redes
+    const r = await aiApi.get("/api/social/connect-url");
+    if (!r.url) { toast("Não foi possível gerar o link de autenticação.", "err"); return; }
+
+    // Abre popup centralizado com a página do Ayrshare
+    const pw = 900, ph = 680;
+    const left = Math.max(0, (screen.width - pw) / 2);
+    const top = Math.max(0, (screen.height - ph) / 2);
+    const popup = window.open(r.url, "ayrshare_connect",
+      `width=${pw},height=${ph},left=${left},top=${top},toolbar=0,menubar=0,location=0,status=0,scrollbars=1,resizable=1`);
+
+    if (!popup) {
+      toast("Popup bloqueado pelo navegador — libere popups para este site.", "err");
+      return;
+    }
+
+    // Mostra overlay no app enquanto o popup está aberto
+    openModal(`
+      <div style="text-align:center;padding:12px 0">
+        <span class="material-icons-round" style="font-size:40px;color:var(--accent);margin-bottom:12px">open_in_new</span>
+        <h2 style="margin-bottom:6px">Conectando redes sociais</h2>
+        <p class="muted" style="font-size:13px;margin-bottom:20px">
+          Uma janela foi aberta para você autenticar sua conta.<br>
+          Após conectar, feche a janela — o status atualiza automaticamente.
+        </p>
+        <div id="social_connect_status" style="min-height:24px"></div>
+        <button class="btn ghost" style="margin-top:16px" onclick="closeModal()">Fechar este aviso</button>
+      </div>`);
+
+    // Polling: detecta quando o popup fecha e recarrega o status
+    const poll = setInterval(async () => {
+      if (popup.closed) {
+        clearInterval(poll);
+        closeModal();
+        toast("Verificando conexões...");
+        await loadSocialStatus();
+      }
+    }, 800);
+
+  } catch (e) {
+    toast("Erro ao gerar link de autenticação.", "err");
+  } finally {
+    if (btnEl) { btnEl.disabled = false; btnEl.innerHTML = '<span class="material-icons-round" style="font-size:15px">add_link</span> Conectar'; }
+  }
 }
 
 // ============================ PERFIL DE IA ============================
