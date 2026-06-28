@@ -811,7 +811,9 @@ app.get("/api/settings/integrations", (req, res) => {
   const mask = (v) => v ? `${v.slice(0, 4)}${"•".repeat(Math.max(4, Math.min(v.length - 8, 24)))}${v.slice(-4)}` : null;
   const info = {};
   for (const k of MANAGED_KEYS) {
-    info[k] = { configured: Boolean(process.env[k]), masked: mask(process.env[k]) };
+    // Lê do banco de dados para garantir consistência com valores persistidos
+    const v = db.getConfig(k);
+    info[k] = { configured: Boolean(v), masked: mask(v) };
   }
   ok(res, { keys: info });
 });
